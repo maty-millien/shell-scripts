@@ -1,3 +1,17 @@
+# This script checks the coding style of a project using a Docker container.
+# It pulls the latest coding style checker image from GitHub Container Registry,
+# runs the checker on the project files, and displays the results in a formatted manner.
+#
+# Usage:
+#   cs DELIVERY_DIR REPORTS_DIR
+#
+# Arguments:
+#   DELIVERY_DIR (optional) - Directory where your project files are. Defaults to the current directory.
+#   REPORTS_DIR (optional) - Directory where we output the reports. Defaults to the current directory.
+#
+# Options:
+#   -h, --help   Show usage information.
+#
 #!/bin/bash
 
 # Colors
@@ -10,6 +24,132 @@ RESET='\033[0m'
 # Constants
 DOCKER_SOCKET_PATH=/var/run/docker.sock
 EXPORT_FILE="coding-style-reports.log"
+#!/bin/bash
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+RESET='\033[0m'
+
+# Constants
+DOCKER_SOCKET_PATH=/var/run/docker.sock
+EXPORT_FILE="coding-style-reports.log"
+
+function show_usage() {
+    echo ""
+    echo "Usage: $(basename $0) DELIVERY_DIR REPORTS_DIR"
+    echo -e "\tDELIVERY_DIR\tShould be the directory where your project files are"
+    echo -e "\tREPORTS_DIR\tShould be the directory where we output the reports"
+    echo -e "\t\t\tTake note that existing reports will be overriden"
+    echo ""
+}
+
+# Function to display formatted style errors
+display_results() {
+    echo
+    local last_file=""
+    local sum=0
+    while read -r line; do
+        # Get filename
+        current_file=$(echo "$line" | cut -d ':' -f 1)
+        
+        # Extract error type (MINOR, MAJOR, INFO)
+        error_type=$(echo "$line" | awk -F: '{print $3}' | cut -d '-' -f 1 | sed 's/^[[:space:]]*//')
+
+        # Set color based on error type
+        if [[ "$error_type" == "MINOR" ]]; then
+            color="$YELLOW"
+        elif [[ "$error_type" == "MAJOR" ]]; then
+            color="$RED"
+        elif [[ "$error_type" == "INFO" ]]; then
+            color="$BLUE"
+        else
+            color="$GREEN"
+        fi
+
+        # Remove "./" from filename
+        current_file=$(echo "$current_file" | sed 's|^\./||')
+
+        # Check if file is in .gitignore
+        if [[ -f .gitignore ]]; then
+            if grep -q "$current_file" .gitignore || grep -q "*.${current_file##*.}" .gitignore; then
+                continue
+            fi
+        fi
+
+        # Add newline for new files
+        if [[ "$current_file" != "$last_file" ]]; then
+            echo "|"
+            last_file="$current_file"
+        fi
+
+        # Display formatted error
+        path_and_line=$(echo "$line" | cut -d ':' -f 1,2)
+        message=$(echo "$line" | cut -d ':' -f 3-)
+        echo -e "|   $path_and_line ${color}${message#$error_type}${RESET}"
+        
+        ((sum++))
+
+    done < "$EXPORT_FILE"
+    
+    if (( sum == 0 )); then
+        printf "${GREEN}No coding style errors found!${RESET}\n"
+    fi
+    echo
+    rm -f "$EXPORT_FILE"
+}
+
+# Main execution
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    show_usage
+else
+    echo -e "${YELLOW}Checking coding style...${RESET}"
+
+    DELIVERY_DIR=${1:-$(pwd)}
+    REPORTS_DIR=${2:-$(pwd)}
+    HAS_SOCKET_ACCESS=$(test -r $DOCKER_SOCKET_PATH; echo "$?")
+    GHCR_REGISTRY_TOKEN=$(curl -s "https://ghcr.io/token?service=ghcr.io&scope=repository:epitech/coding-style-checker:pull" | grep -o '"token":"[^"]*' | grep -o '[^"]*$') 
+    GHCR_REPOSITORY_STATUS=$(curl -I -f -s -o /dev/null -H "Authorization: Bearer $GHCR_REGISTRY_TOKEN" "https://ghcr.io/v2/epitech/coding-style-checker/manifests/latest" && echo 0 || echo 1)
+    BASE_EXEC_CMD="docker"
+
+    # Delete existing report file
+    rm -f "$EXPORT_FILE"
+
+    # Check Docker socket access
+    if [ $HAS_SOCKET_ACCESS -ne 0 ]; then
+        echo -e "${YELLOW}WARNING: Socket access is denied${RESET}"
+        echo "To fix this we will add the current user to docker group with : sudo usermod -a -G docker $USER"
+        read -p "Do you want to proceed? (yes/no) " yn
+        case $yn in 
+            yes | Y | y | Yes | YES)
+                echo "ok, we will proceed"
+                sudo usermod -a -G docker $USER
+                echo -e "${YELLOW}You must reboot your computer for the changes to take effect${RESET}";;
+            no | N | n | No | NO)
+                echo "ok, Skipping";;
+            *)
+                echo "invalid response, Skipping";;
+        esac
+        BASE_EXEC_CMD="sudo ${BASE_EXEC_CMD}"
+    fi
+
+    # Pull Docker image if available
+    if [ $GHCR_REPOSITORY_STATUS -eq 0 ]; then
+        $BASE_EXEC_CMD pull ghcr.io/epitech/coding-style-checker:latest > /dev/null 2>&1 && $BASE_EXEC_CMD image prune -f > /dev/null 2>&1
+    else
+        echo -e "${YELLOW}WARNING: Skipping image download${RESET}"
+    fi
+
+    # Run style checker
+    $BASE_EXEC_CMD run --rm -i -v "$DELIVERY_DIR":"/mnt/delivery" -v "$REPORTS_DIR":"/mnt/reports" ghcr.io/epitech/coding-style-checker:latest "/mnt/delivery" "/mnt/reports"
+    
+    # Display results if report file exists
+    if [[ -f "$EXPORT_FILE" ]]; then
+        display_results
+    fi
+fi
 
 function show_usage() {
     echo ""

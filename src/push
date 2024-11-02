@@ -1,3 +1,19 @@
+# This script automates the process of staging, committing, and pushing changes to a git repository.
+# It includes color-coded messages for better readability and user guidance.
+#
+# Usage:
+#   push [commit_message]
+#
+# Parameters:
+#   commit_message (optional) - A custom commit message. If not provided, a default message "Changes:" will be used.
+#
+# Features:
+# - Checks if the current directory is a git repository.
+# - Stages all changes.
+# - Generates a commit message listing added, modified, deleted, and renamed files.
+# - Commits the changes with the generated or provided commit message.
+# - Pushes the commit to the current branch.
+#
 #!/bin/bash
 
 # Colors
