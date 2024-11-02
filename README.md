@@ -52,7 +52,3 @@ Contributions are welcome! If you have a script that you think would be useful t
 ## License
 
 This repository is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
-
----
-
-Thank you for using the Bash Scripts Repository! If you have any questions or suggestions, please open an issue or contact the repository owner.
