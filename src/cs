@@ -133,7 +133,7 @@ else
 
     # Run style checker
     echo -e "🔍 ${BLUE}Checking coding style...${RESET}"
-    $BASE_EXEC_CMD run --rm -i -v "$DELIVERY_DIR":"/mnt/delivery" -v "$REPORTS_DIR":"/mnt/reports" ghcr.io/epitech/coding-style-checker:latest "/mnt/delivery" "/mnt/reports"
+    $BASE_EXEC_CMD run --platform linux/amd64 --rm -i -v "$DELIVERY_DIR":"/mnt/delivery" -v "$REPORTS_DIR":"/mnt/reports" ghcr.io/epitech/coding-style-checker:latest "/mnt/delivery" "/mnt/reports"
     
     # Display results if report file exists
     if [[ -f "$EXPORT_FILE" ]]; then
