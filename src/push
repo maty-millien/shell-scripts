@@ -69,7 +69,7 @@ generate_commit_message() {
     
     # Push to the current branch
     if git push origin "$CURRENT_BRANCH" > /dev/null 2>&1; then
-        echo -e "${GREEN}✅ Successfully pushed to $CURRENT_BRANCH${NC}"
+        echo -e "${GREEN}✅ Successfully pushed to ${YELLOW}$CURRENT_BRANCH${NC}"
     else
         echo -e "${RED}❌ Failed to push to $CURRENT_BRANCH${NC}"
         echo -e "${YELLOW}💡 Try running: git push origin $CURRENT_BRANCH manually${NC}"
