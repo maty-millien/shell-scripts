@@ -1,3 +1,5 @@
+#!/bin/bash
+#
 # This script automates the process of staging, committing, and pushing changes to a git repository.
 # It includes color-coded messages for better readability and user guidance.
 #
@@ -14,7 +16,6 @@
 # - Commits the changes with the generated or provided commit message.
 # - Pushes the commit to the current branch.
 #
-#!/bin/bash
 
 # Colors
 GREEN='\033[0;32m'
@@ -58,7 +59,7 @@ generate_commit_message() {
     echo -e "${YELLOW}📋 Committing changes...${NC}"
     
     # Use generated message for commit
-    git commit -F commit_msg.txt
+    git commit -F commit_msg.txt > /dev/null 2>&1
     rm commit_msg.txt
 
     # Get current branch name
@@ -67,7 +68,7 @@ generate_commit_message() {
     echo -e "${BLUE}🚀 Pushing to ${YELLOW}$CURRENT_BRANCH${BLUE}...${NC}"
     
     # Push to the current branch
-    if git push origin "$CURRENT_BRANCH"; then
+    if git push origin "$CURRENT_BRANCH" > /dev/null 2>&1; then
         echo -e "${GREEN}✅ Successfully pushed to $CURRENT_BRANCH${NC}"
     else
         echo -e "${RED}❌ Failed to push to $CURRENT_BRANCH${NC}"

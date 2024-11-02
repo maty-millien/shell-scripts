@@ -1,8 +1,9 @@
+#!/bin/bash
+#
 # This script cleans up temporary files in the current directory and its subdirectories.
 # Usage:
 #   clean
 #
-#!/bin/bash
 
 # Colors
 GREEN='\033[0;32m'
