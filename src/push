@@ -7,7 +7,7 @@
 #   push [commit_message]
 #
 # Parameters:
-#   commit_message (optional) - A custom commit message. If not provided, a default message "Changes:" will be used.
+#   commit_message (optional) - A custom commit message. If not provided, a default message will be used.
 #
 # Features:
 # - Checks if the current directory is a git repository.
@@ -42,22 +42,30 @@ generate_commit_message() {
     DELETED_FILES=$(git diff --cached --name-only --diff-filter=D | sed 's/^/\t/g')
     RENAMED_FILES=$(git diff --cached --name-only --diff-filter=R | sed 's/^/\t/g')
 
+    # Count the number of changes
+    ADDED_COUNT=$(echo "$ADDED_FILES" | grep -c '^' || true)
+    MODIFIED_COUNT=$(echo "$MODIFIED_FILES" | grep -c '^' || true)
+    DELETED_COUNT=$(echo "$DELETED_FILES" | grep -c '^' || true)
+    RENAMED_COUNT=$(echo "$RENAMED_FILES" | grep -c '^' || true)
+    TOTAL_CHANGES=$((ADDED_COUNT + MODIFIED_COUNT + DELETED_COUNT + RENAMED_COUNT))
+
     # Build commit message with custom title if provided
     if [ -n "$1" ]; then
-        echo "$1" > commit_msg.txt
+        echo "$1 ($TOTAL_CHANGES changes)" > commit_msg.txt
     else
-        echo "Changes:" > commit_msg.txt
+        echo "Changes: ($TOTAL_CHANGES files)" > commit_msg.txt
     fi
     
     # List modified files by category without emojis
-    [[ ! -z "$ADDED_FILES" ]] && echo -e "\nAdded:\n$ADDED_FILES" >> commit_msg.txt
-    [[ ! -z "$MODIFIED_FILES" ]] && echo -e "\nModified:\n$MODIFIED_FILES" >> commit_msg.txt
-    [[ ! -z "$DELETED_FILES" ]] && echo -e "\nDeleted:\n$DELETED_FILES" >> commit_msg.txt
-    [[ ! -z "$RENAMED_FILES" ]] && echo -e "\nRenamed:\n$RENAMED_FILES" >> commit_msg.txt
+    [[ ! -z "$ADDED_FILES" ]] && echo -e "\nAdded ($ADDED_COUNT):\n$ADDED_FILES" >> commit_msg.txt
+    [[ ! -z "$MODIFIED_FILES" ]] && echo -e "\nModified ($MODIFIED_COUNT):\n$MODIFIED_FILES" >> commit_msg.txt
+    [[ ! -z "$DELETED_FILES" ]] && echo -e "\nDeleted ($DELETED_COUNT):\n$DELETED_FILES" >> commit_msg.txt
+    [[ ! -z "$RENAMED_FILES" ]] && echo -e "\nRenamed ($RENAMED_COUNT):\n$RENAMED_FILES" >> commit_msg.txt
 
-    # Show what's being committed
-    echo -e "${YELLOW}📋 Committing changes...${NC}"
-    
+    # Show commit message in terminal
+    echo -e "${YELLOW}📋 Commit Message:${NC}"
+    cat commit_msg.txt
+
     # Use generated message for commit
     git commit -F commit_msg.txt > /dev/null 2>&1
     rm commit_msg.txt
