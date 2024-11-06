@@ -46,9 +46,9 @@ generate_commit_message() {
     if [ -n "$1" ]; then
         echo "$1" > commit_msg.txt
     else
-        echo "Changed $TOTAL_CHANGES file$([ $TOTAL_CHANGES -eq 1 ] || echo 's')" > commit_msg.txt
+        echo "$TOTAL_CHANGES change$([ $TOTAL_CHANGES -eq 1 ] || echo 's') in total" >> commit_msg.txt
     fi
-    
+
     # List modified files by category without emojis (only if there are files in that category)
     [[ $ADDED_COUNT -gt 0 ]] && echo -e "\nAdded ($ADDED_COUNT):\n$ADDED_FILES" >> commit_msg.txt
     [[ $MODIFIED_COUNT -gt 0 ]] && echo -e "\nModified ($MODIFIED_COUNT):\n$MODIFIED_FILES" >> commit_msg.txt
