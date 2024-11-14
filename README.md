@@ -19,8 +19,8 @@ This repository is a collection of Bash scripts that can help you automate repet
 To get started with these scripts, clone the repository to your local machine:
 
 ```bash
-git clone https://github.com/maty-mlln/bash-scripts.git
-cd bash-scripts
+git clone https://github.com/maty-mlln/shell-scripts.git
+cd shell-scripts
 ```
 
 Make sure you have the necessary permissions to execute the scripts:
@@ -32,7 +32,7 @@ chmod +x src/*
 And finally, add the `src` directory to your `PATH` environment variable in your `.bashrc` or `.zshrc` file:
 
 ```bash
-export PATH=$PATH:/path/to/bash-scripts/src
+export PATH=$PATH:/path/to/shell-scripts/src
 ```
 
 ## Scripts
