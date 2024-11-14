@@ -42,18 +42,34 @@ generate_commit_message() {
     RENAMED_COUNT=$([ -n "$RENAMED_FILES" ] && echo "$RENAMED_FILES" | grep -c '^' || echo 0)
     TOTAL_CHANGES=$((ADDED_COUNT + MODIFIED_COUNT + DELETED_COUNT + RENAMED_COUNT))
 
-    # Build commit message with custom title if provided
+    # Build commit message
     if [ -n "$1" ]; then
         echo "$1" > commit_msg.txt
     else
-        echo "$TOTAL_CHANGES change$([ $TOTAL_CHANGES -eq 1 ] || echo 's'):" >> commit_msg.txt
+        if [ $TOTAL_CHANGES -eq 1 ]; then
+            # For single changes, determine the type and filename
+            if [ $ADDED_COUNT -eq 1 ]; then
+                SINGLE_FILE=$(echo "$ADDED_FILES" | tr -d '\t')
+                echo "Added $SINGLE_FILE" > commit_msg.txt
+            elif [ $MODIFIED_COUNT -eq 1 ]; then
+                SINGLE_FILE=$(echo "$MODIFIED_FILES" | tr -d '\t')
+                echo "Modified $SINGLE_FILE" > commit_msg.txt
+            elif [ $DELETED_COUNT -eq 1 ]; then
+                SINGLE_FILE=$(echo "$DELETED_FILES" | tr -d '\t')
+                echo "Deleted $SINGLE_FILE" > commit_msg.txt
+            elif [ $RENAMED_COUNT -eq 1 ]; then
+                SINGLE_FILE=$(echo "$RENAMED_FILES" | tr -d '\t')
+                echo "Renamed $SINGLE_FILE" > commit_msg.txt
+            fi
+        else
+            echo "$TOTAL_CHANGES changes:" > commit_msg.txt
+            # List modified files by category without emojis (only if there are files in that category)
+            [[ $ADDED_COUNT -gt 0 ]] && echo -e "\nAdded ($ADDED_COUNT):\n$ADDED_FILES" >> commit_msg.txt
+            [[ $MODIFIED_COUNT -gt 0 ]] && echo -e "\nModified ($MODIFIED_COUNT):\n$MODIFIED_FILES" >> commit_msg.txt
+            [[ $DELETED_COUNT -gt 0 ]] && echo -e "\nDeleted ($DELETED_COUNT):\n$DELETED_FILES" >> commit_msg.txt
+            [[ $RENAMED_COUNT -gt 0 ]] && echo -e "\nRenamed ($RENAMED_COUNT):\n$RENAMED_FILES" >> commit_msg.txt
+        fi
     fi
-
-    # List modified files by category without emojis (only if there are files in that category)
-    [[ $ADDED_COUNT -gt 0 ]] && echo -e "\nAdded ($ADDED_COUNT):\n$ADDED_FILES" >> commit_msg.txt
-    [[ $MODIFIED_COUNT -gt 0 ]] && echo -e "\nModified ($MODIFIED_COUNT):\n$MODIFIED_FILES" >> commit_msg.txt
-    [[ $DELETED_COUNT -gt 0 ]] && echo -e "\nDeleted ($DELETED_COUNT):\n$DELETED_FILES" >> commit_msg.txt
-    [[ $RENAMED_COUNT -gt 0 ]] && echo -e "\nRenamed ($RENAMED_COUNT):\n$RENAMED_FILES" >> commit_msg.txt
 
     # Show commit message in terminal
     echo -e "${YELLOW}📋 Commit Message:${NC}"
@@ -65,9 +81,9 @@ generate_commit_message() {
 
     # Get current branch name
     CURRENT_BRANCH=$(git branch --show-current)
-    
+
     echo -e "${BLUE}🚀 Pushing to ${YELLOW}$CURRENT_BRANCH${BLUE}...${NC}"
-    
+
     # Push to the current branch
     if git push origin "$CURRENT_BRANCH" > /dev/null 2>&1; then
         echo -e "${GREEN}✅ Successfully pushed to $CURRENT_BRANCH${NC}"
