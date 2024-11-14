@@ -1,4 +1,4 @@
-# Bash Scripts Repository
+# Shell Scripts Repository
 
 Welcome to my Bash Scripts Repository! This repository contains a collection of useful and reusable Bash scripts to automate various tasks.
 
