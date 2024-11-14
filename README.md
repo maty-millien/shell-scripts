@@ -1,18 +1,6 @@
 # Shell Scripts Repository
 
-Welcome to my Bash Scripts Repository! This repository contains a collection of useful and reusable Bash scripts to automate various tasks.
-
-## Table of Contents
-
-- [Introduction](#introduction)
-- [Getting Started](#getting-started)
-- [Scripts](#scripts)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Introduction
-
-This repository is a collection of Bash scripts that can help you automate repetitive tasks, manage system operations, and improve your productivity. Each script is designed to be simple, efficient, and easy to use.
+Welcome to my Shell Scripts Repository! This repository contains a collection of useful and reusable shell scripts to automate various tasks.
 
 ## Getting Started
 
