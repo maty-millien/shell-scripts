@@ -25,6 +25,7 @@ RESET='\033[0m'
 # Constants
 DOCKER_SOCKET_PATH=/var/run/docker.sock
 EXPORT_FILE="coding-style-reports.log"
+IMAGE_LAST_PULL_FILE="/tmp/coding_style_checker_last_pull"
 
 function show_usage() {
     echo ""
@@ -90,6 +91,19 @@ display_results() {
     rm -f "$EXPORT_FILE"
 }
 
+# Function to check if the image was pulled in the last 24 hours
+should_pull_image() {
+    if [[ -f "$IMAGE_LAST_PULL_FILE" ]]; then
+        last_pull_time=$(cat "$IMAGE_LAST_PULL_FILE")
+        current_time=$(date +%s)
+        time_diff=$((current_time - last_pull_time))
+        if (( time_diff < 86400 )); then
+            return 1
+        fi
+    fi
+    return 0
+}
+
 # Main execution
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     show_usage
@@ -97,9 +111,6 @@ else
     DELIVERY_DIR=$(pwd)
     REPORTS_DIR=$(pwd)
     HAS_SOCKET_ACCESS=$(test -r $DOCKER_SOCKET_PATH; echo "$?")
-    echo -e "🔑 ${YELLOW}Fetching token...${RESET}"
-    GHCR_REGISTRY_TOKEN=$(curl -s "https://ghcr.io/token?service=ghcr.io&scope=repository:epitech/coding-style-checker:pull" | grep -o '"token":"[^"]*' | grep -o '[^"]*$') 
-    GHCR_REPOSITORY_STATUS=$(curl -I -f -s -o /dev/null -H "Authorization: Bearer $GHCR_REGISTRY_TOKEN" "https://ghcr.io/v2/epitech/coding-style-checker/manifests/latest" && echo 0 || echo 1)
     BASE_EXEC_CMD="docker"
 
     # Delete existing report file
@@ -110,7 +121,7 @@ else
         echo -e "${YELLOW}WARNING: Socket access is denied${RESET}"
         echo "To fix this we will add the current user to docker group with : sudo usermod -a -G docker $USER"
         read -p "Do you want to proceed? (yes/no) " yn
-        case $yn in 
+        case $yn in
             yes | Y | y | Yes | YES)
                 echo "ok, we will proceed"
                 sudo usermod -a -G docker $USER
@@ -123,12 +134,20 @@ else
         BASE_EXEC_CMD="sudo ${BASE_EXEC_CMD}"
     fi
 
-    # Pull Docker image if available
-    if [ $GHCR_REPOSITORY_STATUS -eq 0 ]; then
-        echo -e "🚚 ${GREEN}Pulling latest coding style checker image...${RESET}"
-        $BASE_EXEC_CMD pull ghcr.io/epitech/coding-style-checker:latest > /dev/null 2>&1 && $BASE_EXEC_CMD image prune -f > /dev/null 2>&1
+    # Pull Docker image if available and not pulled in the last 24 hours
+    if should_pull_image; then
+        echo -e "🔑 ${YELLOW}Fetching token...${RESET}"
+        GHCR_REGISTRY_TOKEN=$(curl -s "https://ghcr.io/token?service=ghcr.io&scope=repository:epitech/coding-style-checker:pull" | grep -o '"token":"[^"]*' | grep -o '[^"]*$')
+        GHCR_REPOSITORY_STATUS=$(curl -I -f -s -o /dev/null -H "Authorization: Bearer $GHCR_REGISTRY_TOKEN" "https://ghcr.io/v2/epitech/coding-style-checker/manifests/latest" && echo 0 || echo 1)
+        if [ $GHCR_REPOSITORY_STATUS -eq 0 ]; then
+            echo -e "🚚 ${GREEN}Pulling latest coding style checker image...${RESET}"
+            $BASE_EXEC_CMD pull ghcr.io/epitech/coding-style-checker:latest > /dev/null 2>&1 && $BASE_EXEC_CMD image prune -f > /dev/null 2>&1
+            date +%s > "$IMAGE_LAST_PULL_FILE"
+        else
+            echo -e "${YELLOW}WARNING: Skipping image download${RESET}"
+        fi
     else
-        echo -e "${YELLOW}WARNING: Skipping image download${RESET}"
+        echo -e "🕒 ${GREEN}Using cached coding style checker image...${RESET}"
     fi
 
     # Run style checker
