@@ -71,7 +71,8 @@ display_results() {
 
         # Check if file is in .gitignore
         if [[ -f .gitignore ]]; then
-            if grep -q "$current_file" .gitignore || grep -q "*.${current_file##*.}" .gitignore; then
+            if grep -q "$current_file" .gitignore || grep -q "*.${current_file##*.}$" .gitignore; then
+                # echo -e "🚫 ${RED}${current_file} is ignored due to $(grep "*.${current_file##*.}$" .gitignore) rule in .gitignore${RESET}"
                 continue
             fi
         fi
