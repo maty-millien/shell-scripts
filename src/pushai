@@ -12,57 +12,61 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
     exit 1
 fi
 
-echo -e "${BLUE}📦 Staging changes...${NC}"
-git add .
-
 generate_commit_message() {
     ADDED_FILES=$(git diff --cached --name-only --diff-filter=A | sed 's/^/\t/g')
     MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=M | sed 's/^/\t/g')
     DELETED_FILES=$(git diff --cached --name-only --diff-filter=D | sed 's/^/\t/g')
     RENAMED_FILES=$(git diff --cached --name-only --diff-filter=R | sed 's/^/\t/g')
 
+    CHANGES_SUMMARY=$(git diff HEAD | sed 's/^/\t/g')
+
+    if [ ! -f "/home/maty/Scripts/src/prompt.txt" ]; then
+        echo -e "${RED}❌ Error: prompt.txt file not found.${NC}"
+        exit 1
+    fi
+    STATIC_PROMPT=$(</home/maty/Scripts/src/prompt.txt)
+
+    PROMPT="$STATIC_PROMPT\n\n$CHANGES_SUMMARY"
+
+    echo -e "${BLUE}🤖 Asking AI to summarize changes...${NC}"
+    OLLAMA_SUMMARY=$(ollama run qwen2.5-coder:1.5b "$PROMPT")
+
+    if [ -z "$OLLAMA_SUMMARY" ]; then
+        echo -e "${RED}❌ Ollama did not generate a summary. Exiting.${NC}"
+        exit 1
+    fi
+
     ADDED_COUNT=$([ -n "$ADDED_FILES" ] && echo "$ADDED_FILES" | grep -c '^' || echo 0)
     MODIFIED_COUNT=$([ -n "$MODIFIED_FILES" ] && echo "$MODIFIED_FILES" | grep -c '^' || echo 0)
     DELETED_COUNT=$([ -n "$DELETED_FILES" ] && echo "$DELETED_FILES" | grep -c '^' || echo 0)
     RENAMED_COUNT=$([ -n "$RENAMED_FILES" ] && echo "$RENAMED_FILES" | grep -c '^' || echo 0)
-    TOTAL_CHANGES=$((ADDED_COUNT + MODIFIED_COUNT + DELETED_COUNT + RENAMED_COUNT))
 
     if [ -n "$1" ]; then
         echo "$1" > commit_msg.txt
     else
-        if [ $TOTAL_CHANGES -eq 1 ]; then
-            if [ $ADDED_COUNT -eq 1 ]; then
-                SINGLE_FILE=$(echo "$ADDED_FILES" | tr -d '\t')
-                echo "Added $SINGLE_FILE" > commit_msg.txt
-            elif [ $MODIFIED_COUNT -eq 1 ]; then
-                SINGLE_FILE=$(echo "$MODIFIED_FILES" | tr -d '\t')
-                echo "Modified $SINGLE_FILE" > commit_msg.txt
-            elif [ $DELETED_COUNT -eq 1 ]; then
-                SINGLE_FILE=$(echo "$DELETED_FILES" | tr -d '\t')
-                echo "Deleted $SINGLE_FILE" > commit_msg.txt
-            elif [ $RENAMED_COUNT -eq 1 ]; then
-                SINGLE_FILE=$(echo "$RENAMED_FILES" | tr -d '\t')
-                echo "Renamed $SINGLE_FILE" > commit_msg.txt
-            fi
-        else
-            echo "$TOTAL_CHANGES changes:" > commit_msg.txt
-            [[ $ADDED_COUNT -gt 0 ]] && echo -e "\nAdded ($ADDED_COUNT):\n$ADDED_FILES" >> commit_msg.txt
-            [[ $MODIFIED_COUNT -gt 0 ]] && echo -e "\nModified ($MODIFIED_COUNT):\n$MODIFIED_FILES" >> commit_msg.txt
-            [[ $DELETED_COUNT -gt 0 ]] && echo -e "\nDeleted ($DELETED_COUNT):\n$DELETED_FILES" >> commit_msg.txt
-            [[ $RENAMED_COUNT -gt 0 ]] && echo -e "\nRenamed ($RENAMED_COUNT):\n$RENAMED_FILES" >> commit_msg.txt
-        fi
+        echo "$OLLAMA_SUMMARY" > commit_msg.txt
+        echo -e "\nDetailed changes:" >> commit_msg.txt
+        [[ $ADDED_COUNT -gt 0 ]] && echo -e "\nAdded ($ADDED_COUNT):\n$ADDED_FILES" >> commit_msg.txt
+        [[ $MODIFIED_COUNT -gt 0 ]] && echo -e "\nModified ($MODIFIED_COUNT):\n$MODIFIED_FILES" >> commit_msg.txt
+        [[ $DELETED_COUNT -gt 0 ]] && echo -e "\nDeleted ($DELETED_COUNT):\n$DELETED_FILES" >> commit_msg.txt
+        [[ $RENAMED_COUNT -gt 0 ]] && echo -e "\nRenamed ($RENAMED_COUNT):\n$RENAMED_FILES" >> commit_msg.txt
     fi
 
     echo -e "${YELLOW}📋 Commit Message:${NC}"
     cat commit_msg.txt
 
+    echo -e "${YELLOW}Accept? (Y/n):${NC}"
+    read -r response
+    if [[ ! "$response" =~ ^[Yy]?$ ]]; then
+        echo -e "${BLUE}🔄 Regenerating commit message...${NC}"
+        generate_commit_message
+    fi
+
     git commit -F commit_msg.txt > /dev/null 2>&1
     rm commit_msg.txt
 
     CURRENT_BRANCH=$(git branch --show-current)
-
     echo -e "${BLUE}🚀 Pushing to ${YELLOW}$CURRENT_BRANCH${BLUE}...${NC}"
-
     if git push origin "$CURRENT_BRANCH" > /dev/null 2>&1; then
         echo -e "${GREEN}✅ Successfully pushed to $CURRENT_BRANCH${NC}"
     else
@@ -70,6 +74,8 @@ generate_commit_message() {
         echo -e "${YELLOW}💡 Try running: git push origin $CURRENT_BRANCH manually${NC}"
     fi
 }
+
+git add .
 
 if git status --porcelain | grep -q '^.*$'; then
     generate_commit_message "$1"
