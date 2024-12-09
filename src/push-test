@@ -62,6 +62,7 @@ generate_commit_message() {
         generate_commit_message
     fi
 
+
     git commit -F commit_msg.txt > /dev/null 2>&1
     rm commit_msg.txt
 
