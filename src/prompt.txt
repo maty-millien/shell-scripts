@@ -1,5 +1,4 @@
-////////////////////////////////////////////////////////////  INSTRUCTIONS  ////////////////////////////////////////////////////////////
-
+INSTRUCTIONS:
 Write a VERY SHORT commit message first line for the following repository changes in this format: <type>: <short summary>. The summary should be short, specific, and written in the imperative mood. Avoid unnecessary details.
 
 Output examples:

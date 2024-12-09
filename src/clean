@@ -1,18 +1,11 @@
 #!/bin/bash
-#
-# This script cleans up temporary files in the current directory and its subdirectories.
-# Usage:
-#   clean
-#
 
-# Colors
 GREEN='\033[1;32m'
 BLUE='\033[1;34m'
 RED='\033[1;31m'
 YELLOW='\033[1;33m'
 RESET='\033[0m'
 
-# Clean up temporary files
 find -name "*~" -delete
 find -name "#*#" -delete
 find -name "*.swp" -delete
