@@ -1,0 +1,6 @@
+fix: update push-test script to stage changes before committing
+
+Detailed changes:
+
+Modified (1):
+	src/push-test
