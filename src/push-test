@@ -61,26 +61,25 @@ generate_commit_message() {
     echo -e "${YELLOW}Is this commit message good? (Y/n):${NC} "
     read -r response
     if [[ "$response" =~ ^[Yy]?$ ]]; then
-        git commit -F commit_msg.txt
+        echo -e "${GREEN}✅ Commit message accepted${NC}"
     else
         echo -e "${BLUE}🔄 Regenerating commit message...${NC}"
         generate_commit_message
     fi
 
-    # git commit -F commit_msg.txt > /dev/null 2>&1
+    git commit -F commit_msg.txt > /dev/null 2>&1
     rm commit_msg.txt
 
     CURRENT_BRANCH=$(git branch --show-current)
     echo -e "${BLUE}🚀 Pushing to ${YELLOW}$CURRENT_BRANCH${BLUE}...${NC}"
-    # if git push origin "$CURRENT_BRANCH" > /dev/null 2>&1; then
-    #     echo -e "${GREEN}✅ Successfully pushed to $CURRENT_BRANCH${NC}"
-    # else
-    #     echo -e "${RED}❌ Failed to push to $CURRENT_BRANCH${NC}"
-    #     echo -e "${YELLOW}💡 Try running: git push origin $CURRENT_BRANCH manually${NC}"
-    # fi
+    if git push origin "$CURRENT_BRANCH" > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ Successfully pushed to $CURRENT_BRANCH${NC}"
+    else
+        echo -e "${RED}❌ Failed to push to $CURRENT_BRANCH${NC}"
+        echo -e "${YELLOW}💡 Try running: git push origin $CURRENT_BRANCH manually${NC}"
+    fi
 }
 
-# Check for changes
 if git status --porcelain | grep -q '^.*$'; then
     generate_commit_message "$1"
 else
