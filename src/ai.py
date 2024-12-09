@@ -6,7 +6,9 @@ import time
 import json
 import argparse
 
-def request_ai(prompt, model="llama3.2:1b", host="http://127.0.0.1:11434"):
+AI_MODEL = "llama3.2:1b-instruct-q2_K"
+
+def request_ai(prompt, model=AI_MODEL, host="http://127.0.0.1:11434"):
     url = f"{host}/v1/completions"
     headers = {
         "Content-Type": "application/json"
@@ -37,7 +39,7 @@ def request_ai(prompt, model="llama3.2:1b", host="http://127.0.0.1:11434"):
 def parse_args():
     parser = argparse.ArgumentParser(description='AI Chat Interface')
     parser.add_argument('prompt', nargs='+', help='The prompt to send to the AI')
-    parser.add_argument('--model', default='llama3.2:1b', help='Model to use')
+    parser.add_argument('--model', default=AI_MODEL, help='Model to use')
     parser.add_argument('--host', default='http://127.0.0.1:11434', help='Host URL')
     return parser.parse_args()
 

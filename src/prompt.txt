@@ -3,12 +3,12 @@
 Write a VERY SHORT commit message first line for the following repository changes in this format: <type>: <short summary>. The summary should be short, specific, and written in the imperative mood. Avoid unnecessary details.
 
 Output examples:
-"feat: add watering reminders for plants",
-"fix: resolve immortality bug in plant growth module",
-"refactor: simplify sunlight exposure logic for better efficiency",
-"docs: update user guide for plant hydration tracking",
-"chore: clean up unused plant species database entries",
-"test: add unit tests for growth rate calculations".
+"feat: add new feature",
+"fix: resolve critical bug",
+"refactor: improve code structure",
+"docs: update documentation",
+"chore: clean up codebase",
+"test: add unit tests".
 
 DON'T USE ``` FORMATING, ONLY PURE TEXT.
 WRITE NOTHING ELSE BUT THE COMMIT MESSAGE FIRST LINE. MAX 100 CHARACTERS.

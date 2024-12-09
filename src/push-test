@@ -13,6 +13,8 @@ RED = '\033[1;31m'
 YELLOW = '\033[1;33m'
 NC = '\033[0m'
 
+AI_MODEL = "llama3.2:1b-instruct-q2_K"
+
 def is_git_repository():
     try:
         subprocess.check_output(['git', 'rev-parse', '--git-dir'], stderr=subprocess.STDOUT)
@@ -28,18 +30,19 @@ def get_changes_summary():
     result = subprocess.check_output(['git', 'diff', 'HEAD'])
     return '\n'.join(['\t' + line for line in result.decode().splitlines()])
 
-def request_ai(prompt, model="llama3.2:1b", host="http://127.0.0.1:11434"):
+def request_ai(prompt, model=AI_MODEL, host="http://127.0.0.1:11434"):
     url = f"{host}/v1/completions"
     headers = {
         "Content-Type": "application/json"
     }
     data = {
         "model": model,
-        "keep_alive": -1,
         "prompt": prompt,
         "stream": True,
+        "keep_alive": 60
     }
 
+    response_text = ""
     with requests.post(url, json=data, headers=headers, stream=True) as response:
         if response.status_code == 200:
             for line in response.iter_lines():
@@ -47,11 +50,12 @@ def request_ai(prompt, model="llama3.2:1b", host="http://127.0.0.1:11434"):
                     json_response = json.loads(line.decode('utf-8').split('data: ')[1])
                     if 'choices' in json_response and len(json_response['choices']) > 0:
                         text = json_response['choices'][0]['text']
+                        response_text += text
                         print(text, end='', flush=True)
                         if json_response['choices'][0]['finish_reason'] == 'stop':
                             print()
                             break
-            return None
+            return response_text
         else:
             print(f"Erreur {response.status_code}: {response.text}")
             return None
@@ -71,7 +75,7 @@ def generate_commit_message(message=None):
     with open(prompt_path, 'r') as f:
         static_prompt = f.read()
 
-    prompt = f"{changes_summary}\n\n{static_prompt}"
+    prompt = f"{static_prompt}\n\n\"\"\"\n{changes_summary}\"\"\""
 
     print(f"{BLUE}🤖 Asking AI to summarize changes...{NC}")
     ollama_summary = request_ai(prompt)
@@ -94,7 +98,6 @@ def generate_commit_message(message=None):
         if renamed_count > 0:
             commit_message += f"\n\nRenamed ({renamed_count}):\n" + '\n'.join(renamed_files)
 
-    print(f"{YELLOW}📋 Commit Message:{NC}")
     print(commit_message)
 
     response = input(f"{YELLOW}Accept? (Y/n):{NC} ")
@@ -105,12 +108,12 @@ def generate_commit_message(message=None):
     with open('commit_msg.txt', 'w') as f:
         f.write(commit_message)
 
-    # subprocess.run(['git', 'commit', '-F', 'commit_msg.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(['git', 'commit', '-F', 'commit_msg.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     os.remove('commit_msg.txt')
 
     current_branch = subprocess.check_output(['git', 'branch', '--show-current']).decode().strip()
     print(f"{BLUE}🚀 Pushing to {YELLOW}{current_branch}{BLUE}...{NC}")
-    # push_result = subprocess.run(['git', 'push', 'origin', current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    push_result = subprocess.run(['git', 'push', 'origin', current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if push_result.returncode == 0:
         print(f"{GREEN}✅ Successfully pushed to {current_branch}{NC}")
     else:
