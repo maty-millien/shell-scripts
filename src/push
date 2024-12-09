@@ -95,7 +95,7 @@ def main():
         generate_commit_message(custom_message)
     else:
         print(f"{RED}❌ No changes to commit{NC}")
-        print(f"{YELLOW}💡 Make some changes first{NC}")
+        # print(f"{YELLOW}💡 Make some changes first{NC}")
         sys.exit(1)
 
 if __name__ == "__main__":
