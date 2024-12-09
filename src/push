@@ -1,14 +1,4 @@
 #!/bin/bash
-#
-# This script automates the process of staging, committing, and pushing changes to a git repository.
-# It includes color-coded messages for better readability and user guidance.
-#
-# Usage:
-#   push [commit_message]
-#
-# Parameters:
-#   commit_message (optional) - A custom commit message. If not provided, a default message will be used.
-#
 
 # Colors
 GREEN='\033[1;32m'

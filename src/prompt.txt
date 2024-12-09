@@ -1,0 +1,34 @@
+////////////////////////////////////////////////////////////  INSTRUCTIONS  ////////////////////////////////////////////////////////////
+
+Write a VERY SHORT commit message first line for the following repository changes in this format: <type>: <short summary>. The summary should be short, specific, and written in the imperative mood. Avoid unnecessary details.
+
+Examples:
+
+"""
+feat: add watering reminders for plants
+fix: resolve immortality bug in plant growth module
+refactor: simplify sunlight exposure logic for better efficiency
+docs: update user guide for plant hydration tracking
+chore: clean up unused plant species database entries
+test: add unit tests for growth rate calculations
+
+feat: add vegan dog food recipe to database
+fix: correct ingredient proportions for digestibility
+docs: update FAQ section for common dog allergies
+refactor: optimize recipe filtering by breed preferences
+chore: remove deprecated flavor profiles for dog treats
+test: implement tests for nutritional value calculations
+
+feat: implement dark mode for the dashboard UI
+fix: patch login crash on invalid credentials
+refactor: reorganize folder structure for clarity
+docs: rewrite README with updated setup instructions
+chore: update dependencies to latest versions
+test: add integration tests for user authentication
+"""
+
+DON'T USE ``` FORMATING, ONLY PURE TEXT.
+WRITE NOTHING ELSE BUT THE COMMIT MESSAGE FIRST LINE.
+
+////////////////////////////////////////////////////////////  Repository changes  ////////////////////////////////////////////////////////////
+
