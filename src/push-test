@@ -57,9 +57,7 @@ generate_commit_message() {
 
     echo -e "${YELLOW}Accept? (Y/n):${NC}"
     read -r response
-    if [[ "$response" =~ ^[Yy]?$ ]]; then
-        echo -e "${GREEN}✅ Commit message accepted${NC}"
-    else
+    if [[ ! "$response" =~ ^[Yy]?$ ]]; then
         echo -e "${BLUE}🔄 Regenerating commit message...${NC}"
         generate_commit_message
     fi
