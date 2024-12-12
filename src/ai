@@ -1,46 +1,41 @@
 #!/usr/bin/env python3
 
-import requests
+import ollama
 import sys
-import time
-import json
 import argparse
 
-AI_MODEL = "llama3.2:1b-instruct-q2_K"
+AI_MODEL = "llama3.2:1b"
+SYSTEM_PROMPT = """You are a highly capable AI assistant optimized for speed. Answer the user's question as quickly as possible and write the less possible. Sometimes you can also answer with one word."""
+
+def create_conversation(prompt, system_message=SYSTEM_PROMPT):
+    return [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": prompt}
+    ]
 
 def request_ai(prompt, model=AI_MODEL, host="http://127.0.0.1:11434"):
-    url = f"{host}/v1/completions"
-    headers = {
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": model,
-        "keep_alive": -1,
-        "prompt": prompt,
-        "stream": True,
-    }
+    messages = create_conversation(prompt)
 
-    with requests.post(url, json=data, headers=headers, stream=True) as response:
-        if response.status_code == 200:
-            for line in response.iter_lines():
-                if line:
-                    json_response = json.loads(line.decode('utf-8').split('data: ')[1])
-                    if 'choices' in json_response and len(json_response['choices']) > 0:
-                        text = json_response['choices'][0]['text']
-                        print(text, end='', flush=True)
-                        if json_response['choices'][0]['finish_reason'] == 'stop':
-                            print()
-                            break
-            return None
-        else:
-            print(f"Erreur {response.status_code}: {response.text}")
-            return None
+    try:
+        for chunk in ollama.chat(
+            model=model,
+            messages=messages,
+            stream=True
+        ):
+            if chunk and 'message' in chunk:
+                print(chunk['message']['content'], end='', flush=True)
+        print()
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
 
 def parse_args():
     parser = argparse.ArgumentParser(description='AI Chat Interface')
     parser.add_argument('prompt', nargs='+', help='The prompt to send to the AI')
     parser.add_argument('--model', default=AI_MODEL, help='Model to use')
     parser.add_argument('--host', default='http://127.0.0.1:11434', help='Host URL')
+    parser.add_argument('--system', default=SYSTEM_PROMPT,
+                      help='System message for the conversation')
     return parser.parse_args()
 
 if __name__ == "__main__":

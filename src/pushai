@@ -3,9 +3,9 @@
 import os
 import sys
 import subprocess
-import requests
 import json
 import time
+from mistralai import Mistral
 
 GREEN = '\033[1;32m'
 BLUE = '\033[1;34m'
@@ -13,7 +13,7 @@ RED = '\033[1;31m'
 YELLOW = '\033[1;33m'
 NC = '\033[0m'
 
-AI_MODEL = "llama3.2:1b-instruct-q2_K"
+AI_MODEL = "mistral-large-latest"
 
 def is_git_repository():
     try:
@@ -30,35 +30,32 @@ def get_changes_summary():
     result = subprocess.check_output(['git', 'diff', 'HEAD'])
     return '\n'.join(['\t' + line for line in result.decode().splitlines()])
 
-def request_ai(prompt, model=AI_MODEL, host="http://127.0.0.1:11434"):
-    url = f"{host}/v1/completions"
-    headers = {
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": model,
-        "prompt": prompt,
-        "stream": True,
-        "keep_alive": 60
-    }
+def request_ai(prompt, model=AI_MODEL):
+    system_prompt_path = '/home/maty/Scripts/src/system_prompt.txt'
+    if not os.path.isfile(system_prompt_path):
+        print(f"{RED}❌ Error: system_prompt.txt file not found.{NC}")
+        sys.exit(1)
+    with open(system_prompt_path, 'r') as f:
+        system_prompt = f.read()
 
-    response_text = ""
-    with requests.post(url, json=data, headers=headers, stream=True) as response:
-        if response.status_code == 200:
-            for line in response.iter_lines():
-                if line:
-                    json_response = json.loads(line.decode('utf-8').split('data: ')[1])
-                    if 'choices' in json_response and len(json_response['choices']) > 0:
-                        text = json_response['choices'][0]['text']
-                        response_text += text
-                        print(text, end='', flush=True)
-                        if json_response['choices'][0]['finish_reason'] == 'stop':
-                            print()
-                            break
-            return response_text
-        else:
-            print(f"Erreur {response.status_code}: {response.text}")
-            return None
+    api_key = os.environ.get('MISTRAL_API_KEY')
+    client = Mistral(api_key)
+
+    try:
+        stream = client.chat.complete(
+            model=model,
+            messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+            ]
+        )
+        # for chunk in stream:
+        #     print(chunk.data.choices[0].delta.content, end='', flush=True)
+        # print()
+        return stream.choices[0].message.content
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
 
 def generate_commit_message(message=None):
     added_files = get_changed_files('A')
@@ -68,17 +65,8 @@ def generate_commit_message(message=None):
 
     changes_summary = get_changes_summary()
 
-    prompt_path = '/home/maty/Scripts/src/prompt.txt'
-    if not os.path.isfile(prompt_path):
-        print(f"{RED}❌ Error: prompt.txt file not found.{NC}")
-        sys.exit(1)
-    with open(prompt_path, 'r') as f:
-        static_prompt = f.read()
-
-    prompt = f"{static_prompt}\n\n\"\"\"\n{changes_summary}\"\"\""
-
     print(f"{BLUE}🤖 Asking AI to summarize changes...{NC}")
-    ollama_summary = request_ai(prompt)
+    ai_summary = request_ai(changes_summary)
 
     added_count = len(added_files)
     modified_count = len(modified_files)
@@ -88,7 +76,7 @@ def generate_commit_message(message=None):
     if message:
         commit_message = message
     else:
-        commit_message = f"{ollama_summary}\n\nDetailed changes:"
+        commit_message = f"{ai_summary}\n\nDetailed changes:"
         if added_count > 0:
             commit_message += f"\n\nAdded ({added_count}):\n" + '\n'.join(added_files)
         if modified_count > 0:
