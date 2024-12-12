@@ -5,6 +5,7 @@ import sys
 import subprocess
 import json
 import time
+import signal
 from mistralai import Mistral
 
 def rgb_to_ansi(r, g, b):
@@ -16,7 +17,6 @@ def gradient_text(text, start_rgb, end_rgb):
     end_r, end_g, end_b = end_rgb
     
     for i, char in enumerate(text):
-        # Calculate the color for the current character
         progress = i / (len(text) - 1) if len(text) > 1 else 0
         r = int(start_r + (end_r - start_r) * progress)
         g = int(start_g + (end_g - start_g) * progress)
@@ -26,21 +26,16 @@ def gradient_text(text, start_rgb, end_rgb):
     
     return result + "\033[0m"
 
-# Définition des dégradés avec des couleurs plus vives
 def error_gradient(text):
-    # Rouge vif vers magenta vif
     return gradient_text(text, (255, 40, 40), (255, 40, 255))
 
 def info_gradient(text):
-    # Cyan vif vers bleu vif
     return gradient_text(text, (40, 255, 255), (40, 40, 255))
 
 def success_gradient(text):
-    # Vert lime vers vert émeraude
     return gradient_text(text, (40, 255, 40), (40, 255, 180))
 
 def warning_gradient(text):
-    # Jaune vif vers orange vif
     return gradient_text(text, (255, 255, 40), (255, 180, 40))
 
 AI_MODEL = "mistral-large-latest"
@@ -85,70 +80,84 @@ def request_ai(prompt, model=AI_MODEL):
         return None
 
 def generate_commit_message(message=None):
-    added_files = get_changed_files('A')
-    modified_files = get_changed_files('M')
-    deleted_files = get_changed_files('D')
-    renamed_files = get_changed_files('R')
+    try:
+        added_files = get_changed_files('A')
+        modified_files = get_changed_files('M')
+        deleted_files = get_changed_files('D')
+        renamed_files = get_changed_files('R')
 
-    changes_summary = get_changes_summary()
+        changes_summary = get_changes_summary()
 
-    print(info_gradient("🤖 Asking AI to summarize changes..."))
-    ai_summary = request_ai(changes_summary)
+        print(info_gradient("🤖 Asking AI to summarize changes..."))
+        ai_summary = request_ai(changes_summary)
 
-    added_count = len(added_files)
-    modified_count = len(modified_files)
-    deleted_count = len(deleted_files)
-    renamed_count = len(renamed_files)
+        added_count = len(added_files)
+        modified_count = len(modified_files)
+        deleted_count = len(deleted_files)
+        renamed_count = len(renamed_files)
 
-    if message:
-        commit_message = message
-    else:
-        commit_message = f"{ai_summary}\n\nDetailed changes:"
-        if added_count > 0:
-            commit_message += f"\n\nAdded ({added_count}):\n" + '\n'.join(added_files)
-        if modified_count > 0:
-            commit_message += f"\n\nModified ({modified_count}):\n" + '\n'.join(modified_files)
-        if deleted_count > 0:
-            commit_message += f"\n\nDeleted ({deleted_count}):\n" + '\n'.join(deleted_files)
-        if renamed_count > 0:
-            commit_message += f"\n\nRenamed ({renamed_count}):\n" + '\n'.join(renamed_files)
+        if message:
+            commit_message = message
+        else:
+            commit_message = f"{ai_summary}\n\nDetailed changes:"
+            if added_count > 0:
+                commit_message += f"\n\nAdded ({added_count}):\n" + '\n'.join(added_files)
+            if modified_count > 0:
+                commit_message += f"\n\nModified ({modified_count}):\n" + '\n'.join(modified_files)
+            if deleted_count > 0:
+                commit_message += f"\n\nDeleted ({deleted_count}):\n" + '\n'.join(deleted_files)
+            if renamed_count > 0:
+                commit_message += f"\n\nRenamed ({renamed_count}):\n" + '\n'.join(renamed_files)
 
-    print(commit_message)
-    
-    response = input(warning_gradient("Accept? (Y/n): "))
-    if response.lower() not in ('y', 'yes', ''):
-        print(info_gradient("🔄 Regenerating commit message..."))
-        generate_commit_message()
+        print(commit_message)
+        
+        response = input(warning_gradient("🔍 Review the commit message. Do you want to proceed? [Y/n] "))
+        if response.lower() not in ('y', 'yes', ''):
+            print(info_gradient("🔄 Regenerating commit message..."))
+            generate_commit_message()
 
-    with open('commit_msg.txt', 'w') as f:
-        f.write(commit_message)
+        with open('commit_msg.txt', 'w') as f:
+            f.write(commit_message)
 
-    subprocess.run(['git', 'commit', '-F', 'commit_msg.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    os.remove('commit_msg.txt')
+        subprocess.run(['git', 'commit', '-F', 'commit_msg.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.remove('commit_msg.txt')
 
-    current_branch = subprocess.check_output(['git', 'branch', '--show-current']).decode().strip()
-    print(info_gradient(f"🚀 Pushing to {current_branch}..."))
-    push_result = subprocess.run(['git', 'push', 'origin', current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if push_result.returncode == 0:
-        print(success_gradient(f"✅ Successfully pushed to {current_branch}"))
-    else:
-        print(error_gradient(f"❌ Failed to push to {current_branch}"))
-        print(warning_gradient(f"💡 Try running: git push origin {current_branch} manually"))
+        current_branch = subprocess.check_output(['git', 'branch', '--show-current']).decode().strip()
+        print(info_gradient(f"🚀 Pushing to {current_branch}..."))
+        push_result = subprocess.run(['git', 'push', 'origin', current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if push_result.returncode == 0:
+            print(success_gradient(f"✅ Successfully pushed to {current_branch}"))
+        else:
+            print(error_gradient(f"❌ Failed to push to {current_branch}"))
+            print(warning_gradient(f"💡 Try running: git push origin {current_branch} manually"))
+    except KeyboardInterrupt:
+        print('\n' + warning_gradient("👋 Commit cancelled"))
+        sys.exit(0)
 
 def main():
-    if not is_git_repository():
-        print(error_gradient("❌ Not a git repository"))
-        sys.exit(1)
+    try:
+        if not is_git_repository():
+            print(error_gradient("❌ Not a git repository"))
+            sys.exit(1)
 
-    subprocess.run(['git', 'add', '.'])
+        subprocess.run(['git', 'add', '.'])
 
-    status = subprocess.check_output(['git', 'status', '--porcelain']).decode().strip()
-    if status:
-        message = sys.argv[1] if len(sys.argv) > 1 else None
-        generate_commit_message(message)
-    else:
-        print(error_gradient("❌ No changes to commit"))
-        sys.exit(1)
+        status = subprocess.check_output(['git', 'status', '--porcelain']).decode().strip()
+        if status:
+            message = sys.argv[1] if len(sys.argv) > 1 else None
+            generate_commit_message(message)
+        else:
+            print(error_gradient("❌ No changes to commit"))
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print('\n' + warning_gradient("👋 Operation cancelled"))
+        sys.exit(0)
+
+def signal_handler(sig, frame):
+    print('\n' + warning_gradient("👋 Exiting gracefully..."))
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == "__main__":
     main()
