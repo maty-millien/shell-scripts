@@ -1,13 +1,31 @@
 INSTRUCTIONS:
-Write a VERY SHORT commit message first line for the following repository changes in this format: <type>: <short summary>. The summary should be short, specific, and written in the imperative mood. Avoid unnecessary details.
+Write a VERY SHORT commit message first line in this format: <type>(<scope>): <short summary>
+Add "!" after type/scope for breaking changes.
 
-Output examples:
-"feat: add new feature",
-"fix: resolve critical bug",
-"refactor: improve code structure",
-"docs: update documentation",
-"chore: clean up codebase",
-"test: add unit tests".
+Types:
+- feat: new feature
+- fix: bug fix
+- docs: documentation only
+- style: formatting, missing semicolons, etc
+- refactor: code change that neither fixes a bug nor adds a feature
+- perf: code change that improves performance
+- test: adding tests
+- chore: maintaining infrastructure, dependencies, etc
+- ci: CI/CD changes
+- build: build system changes
 
-DON'T USE ``` FORMATING, ONLY PURE TEXT.
-WRITE NOTHING ELSE BUT THE COMMIT MESSAGE FIRST LINE. MAX 100 CHARACTERS.
+Rules:
+- Use imperative mood ("add" not "added" or "adds")
+- Don't capitalize first letter
+- No period at the end
+- Max 100 characters total
+- Scope is optional but recommended
+
+Examples:
+"feat(auth): add JWT authentication"
+"fix(api)!: change response format"
+"refactor(core): simplify error handling"
+"perf(db): optimize query performance"
+
+DON'T USE ``` FORMATTING, ONLY PURE TEXT.
+WRITE NOTHING ELSE BUT THE COMMIT MESSAGE FIRST LINE.

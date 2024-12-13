@@ -70,7 +70,6 @@ def display_results():
     if not os.path.exists(EXPORT_FILE):
         return
     
-    # First pass to determine the maximum width
     with open(EXPORT_FILE, 'r') as f:
         for line in f:
             current_file = line.split(':')[0]
@@ -85,9 +84,8 @@ def display_results():
             formatted_message = f"{path_and_line:<30} {error_code.strip()} → {description.strip()}"
             max_width = max(max_width, len(strip_ansi(formatted_message)))
     
-    box_width = max_width + 2  # Adding padding for the box
+    box_width = max_width + 2
     
-    # Second pass to print the results
     with open(EXPORT_FILE, 'r') as f:
         for line in f:
             current_file = line.split(':')[0]
@@ -106,7 +104,6 @@ def display_results():
             
             current_file = current_file.replace('./', '')
             
-            # Check gitignore
             if os.path.exists('.gitignore'):
                 with open('.gitignore', 'r') as gitignore:
                     patterns = gitignore.read().splitlines()
@@ -128,7 +125,6 @@ def display_results():
             error_code, description = message.split(':', 1)
             formatted_message = f"{error_code.strip()} → {description.strip()}"
             
-            # Calculate padding considering ANSI codes
             colored_msg = color_func(formatted_message)
             content = f"{path_and_line:<30} {formatted_message}"
             padding = box_width - len(strip_ansi(content)) - 1
@@ -137,9 +133,9 @@ def display_results():
             sum_errors += 1
     
     if sum_errors == 0:
-        print(f"\n✅ {success_gradient('No coding style issues found')}")
+        print(f"✅ {success_gradient('No coding style issues found')}")
     else:
-        print("╰" + "─" * box_width + "╯")  # Close the last file's box
+        print("╰" + "─" * box_width + "╯")
 
 def should_pull_image(force_pull):
     if force_pull:
@@ -155,8 +151,8 @@ def should_pull_image(force_pull):
 def clear_previous_lines(num_lines):
     """Clear the specified number of previous lines in terminal."""
     for _ in range(num_lines):
-        sys.stdout.write('\x1b[1A')  # Move cursor up one line
-        sys.stdout.write('\x1b[2K')  # Clear the line
+        sys.stdout.write('\x1b[1A')
+        sys.stdout.write('\x1b[2K')
 
 def main():
     parser = argparse.ArgumentParser(description='Coding style checker')
@@ -217,6 +213,9 @@ def main():
     
     clear_previous_lines(2)
     display_results()
+    
+    if os.path.exists(EXPORT_FILE):
+        os.remove(EXPORT_FILE)
 
 if __name__ == "__main__":
     main()
