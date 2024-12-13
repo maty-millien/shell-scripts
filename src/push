@@ -55,9 +55,25 @@ def get_changed_files(filter_type):
     result = subprocess.check_output(['git', 'diff', '--cached', '--name-only', f'--diff-filter={filter_type}'])
     return ['\t' + line for line in result.decode().splitlines()]
 
+def is_initial_commit():
+    try:
+        subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL)
+        return False
+    except subprocess.CalledProcessError:
+        return True
+
 def get_changes_summary():
-    result = subprocess.check_output(['git', 'diff', 'HEAD'])
-    return '\n'.join(['\t' + line for line in result.decode().splitlines()])
+    try:
+        if is_initial_commit():
+            # For initial commit, show staged changes
+            result = subprocess.check_output(['git', 'diff', '--cached'])
+        else:
+            # For subsequent commits, compare with HEAD
+            result = subprocess.check_output(['git', 'diff', 'HEAD'])
+        return '\n'.join(['\t' + line for line in result.decode().splitlines()])
+    except subprocess.CalledProcessError as e:
+        print(error_gradient(f"❌ Error getting changes: {str(e)}"))
+        sys.exit(1)
 
 def request_ai(prompt, model=AI_MODEL):
     system_prompt_path = '/home/maty/Scripts/src/system_prompt.txt'
