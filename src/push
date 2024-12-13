@@ -1,99 +1,170 @@
 #!/usr/bin/env python3
 
-import subprocess
-import sys
 import os
+import sys
+import subprocess
+import json
+import time
+import signal
+from mistralai import Mistral
 
-GREEN = '\033[1;32m'
-BLUE = '\033[1;34m'
-RED = '\033[1;31m'
-YELLOW = '\033[1;33m'
-RESET = '\033[0m'
+def rgb_to_ansi(r, g, b, bold=True):
+    bold_code = "1;" if bold else ""
+    return f"\033[{bold_code}38;2;{r};{g};{b}m"
+
+def gradient_text(text, start_rgb, end_rgb, bold=True):
+    result = ""
+    start_r, start_g, start_b = start_rgb
+    end_r, end_g, end_b = end_rgb
+    
+    for i, char in enumerate(text):
+        progress = i / (len(text) - 1) if len(text) > 1 else 0
+        r = int(start_r + (end_r - start_r) * progress)
+        g = int(start_g + (end_g - start_g) * progress)
+        b = int(start_b + (end_b - start_b) * progress)
+        
+        result += f"{rgb_to_ansi(r, g, b, bold)}{char}"
+    
+    return result + "\033[0m"
+
+def error_gradient(text):
+    return gradient_text(text, (255, 40, 40), (255, 40, 255))
+
+def info_gradient(text):
+    return gradient_text(text, (40, 255, 255), (40, 40, 255))
+
+def success_gradient(text):
+    return gradient_text(text, (40, 255, 40), (40, 255, 180))
+
+def warning_gradient(text):
+    return gradient_text(text, (255, 255, 40), (255, 180, 40))
+
+def white_gradient(text):
+    return gradient_text(text, (250, 250, 250), (225, 234, 238), bold=False)
+
+AI_MODEL = "mistral-large-latest"
 
 def is_git_repository():
     try:
-        subprocess.run(['git', 'rev-parse', '--git-dir'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_output(['git', 'rev-parse', '--git-dir'], stderr=subprocess.STDOUT)
         return True
     except subprocess.CalledProcessError:
         return False
 
-def generate_commit_message(custom_message=None):
-    added_files = subprocess.getoutput("git diff --cached --name-only --diff-filter=A")
-    modified_files = subprocess.getoutput("git diff --cached --name-only --diff-filter=M")
-    deleted_files = subprocess.getoutput("git diff --cached --name-only --diff-filter=D")
-    renamed_files = subprocess.getoutput("git diff --cached --name-only --diff-filter=R")
+def get_changed_files(filter_type):
+    result = subprocess.check_output(['git', 'diff', '--cached', '--name-only', f'--diff-filter={filter_type}'])
+    return ['\t' + line for line in result.decode().splitlines()]
 
-    added_list = added_files.splitlines()
-    modified_list = modified_files.splitlines()
-    deleted_list = deleted_files.splitlines()
-    renamed_list = renamed_files.splitlines()
+def get_changes_summary():
+    result = subprocess.check_output(['git', 'diff', 'HEAD'])
+    return '\n'.join(['\t' + line for line in result.decode().splitlines()])
 
-    added_count = len(added_list) if added_list != [''] else 0
-    modified_count = len(modified_list) if modified_list != [''] else 0
-    deleted_count = len(deleted_list) if deleted_list != [''] else 0
-    renamed_count = len(renamed_list) if renamed_list != [''] else 0
-    total_changes = added_count + modified_count + deleted_count + renamed_count
+def request_ai(prompt, model=AI_MODEL):
+    system_prompt_path = '/home/maty/Scripts/src/system_prompt.txt'
+    if not os.path.isfile(system_prompt_path):
+        print(error_gradient("❌ Error: system_prompt.txt file not found."))
+        sys.exit(1)
+    with open(system_prompt_path, 'r') as f:
+        system_prompt = f.read()
 
-    if custom_message:
-        commit_message = custom_message
-    else:
-        if total_changes == 1:
-            if added_count == 1:
-                commit_message = f"Added {added_list[0]}"
-            elif modified_count == 1:
-                commit_message = f"Modified {modified_list[0]}"
-            elif deleted_count == 1:
-                commit_message = f"Deleted {deleted_list[0]}"
-            elif renamed_count ==1:
-                commit_message = f"Renamed {renamed_list[0]}"
-            else:
-                commit_message = "Updated files"
-        else:
-            commit_message = f"{total_changes} changes:"
-
-    if total_changes > 1 or custom_message:
-        if added_count > 0:
-            commit_message += f"\n\nAdded ({added_count}):\n" + "\n".join(f"\t{file}" for file in added_list)
-        if modified_count > 0:
-            commit_message += f"\n\nModified ({modified_count}):\n" + "\n".join(f"\t{file}" for file in modified_list)
-        if deleted_count > 0:
-            commit_message += f"\n\nDeleted ({deleted_count}):\n" + "\n".join(f"\t{file}" for file in deleted_list)
-        if renamed_count > 0:
-            commit_message += f"\n\nRenamed ({renamed_count}):\n" + "\n".join(f"\t{file}" for file in renamed_list)
-
-    print(f"{YELLOW}📋 Commit Message:{RESET}")
-    print(commit_message)
-
-    with open('commit_msg.txt', 'w') as f:
-        f.write(commit_message)
-
-    subprocess.run(['git', 'commit', '-F', 'commit_msg.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    os.remove('commit_msg.txt')
-
-    current_branch = subprocess.getoutput('git branch --show-current')
-
-    print(f"{BLUE}🚀 Pushing to {YELLOW}{current_branch}{BLUE}...{RESET}")
+    api_key = os.environ.get('MISTRAL_API_KEY')
+    client = Mistral(api_key)
 
     try:
-        subprocess.run(['git', 'push', 'origin', current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"{GREEN}✅ Successfully pushed to {current_branch}{RESET}")
-    except subprocess.CalledProcessError:
-        print(f"{RED}❌ Failed to push to {current_branch}{RESET}")
-        print(f"{YELLOW}💡 Try running: git push origin {current_branch} manually{RESET}")
+        stream = client.chat.complete(
+            model=model,
+            messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+            ]
+        )
+        return stream.choices[0].message.content
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
+
+def generate_commit_message(message=None):
+    try:
+        added_files = get_changed_files('A')
+        modified_files = get_changed_files('M')
+        deleted_files = get_changed_files('D')
+        renamed_files = get_changed_files('R')
+
+        changes_summary = get_changes_summary()
+
+        print(info_gradient("🤖 Asking AI to summarize changes..."))
+        ai_summary = request_ai(changes_summary)
+
+        added_count = len(added_files)
+        modified_count = len(modified_files)
+        deleted_count = len(deleted_files)
+        renamed_count = len(renamed_files)
+
+        if message:
+            commit_message = message
+        else:
+            commit_message = f"{ai_summary}\n\nDetailed changes:"
+            if added_count > 0:
+                commit_message += f"\n\nAdded ({added_count}):\n" + '\n'.join(added_files)
+            if modified_count > 0:
+                commit_message += f"\n\nModified ({modified_count}):\n" + '\n'.join(modified_files)
+            if deleted_count > 0:
+                commit_message += f"\n\nDeleted ({deleted_count}):\n" + '\n'.join(deleted_files)
+            if renamed_count > 0:
+                commit_message += f"\n\nRenamed ({renamed_count}):\n" + '\n'.join(renamed_files)
+
+        print(success_gradient("✅ Successfully generated commit message"))
+        print(white_gradient("\"\"\""))
+        print(white_gradient(commit_message))
+        print(white_gradient("\"\"\""))
+        
+        response = input(warning_gradient("🔍 Review the commit message. Do you want to proceed? [Y/n] "))
+        if response.lower() not in ('y', 'yes', ''):
+            print(info_gradient("🔄 Regenerating commit message..."))
+            generate_commit_message()
+
+        with open('commit_msg.txt', 'w') as f:
+            f.write(commit_message)
+
+        subprocess.run(['git', 'commit', '-F', 'commit_msg.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.remove('commit_msg.txt')
+
+        current_branch = subprocess.check_output(['git', 'branch', '--show-current']).decode().strip()
+        print(info_gradient(f"🚀 Pushing to {current_branch}..."))
+        push_result = subprocess.run(['git', 'push', 'origin', current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if push_result.returncode == 0:
+            print(success_gradient(f"✅ Successfully pushed to {current_branch}"))
+        else:
+            print(error_gradient(f"❌ Failed to push to {current_branch}"))
+            print(warning_gradient(f"💡 Try running: git push origin {current_branch} manually"))
+    except KeyboardInterrupt:
+        print('\n' + warning_gradient("👋 Commit cancelled"))
+        sys.exit(0)
 
 def main():
-    if not is_git_repository():
-        print(f"{RED}❌ Not a git repository{RESET}")
-        sys.exit(1)
-    subprocess.run(['git', 'add', '.'])
+    try:
+        if not is_git_repository():
+            print(error_gradient("❌ Not a git repository"))
+            sys.exit(1)
 
-    status_output = subprocess.getoutput('git status --porcelain')
-    if status_output.strip() != '':
-        custom_message = sys.argv[1] if len(sys.argv) > 1 else None
-        generate_commit_message(custom_message)
-    else:
-        print(f"{RED}❌ No changes to commit{RESET}")
-        sys.exit(1)
+        subprocess.run(['git', 'add', '.'])
+
+        status = subprocess.check_output(['git', 'status', '--porcelain']).decode().strip()
+        if status:
+            message = sys.argv[1] if len(sys.argv) > 1 else None
+            generate_commit_message(message)
+        else:
+            print(error_gradient("❌ No changes to commit"))
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print('\n' + warning_gradient("👋 Operation cancelled"))
+        sys.exit(0)
+
+def signal_handler(sig, frame):
+    print('\n' + warning_gradient("👋 Exiting gracefully..."))
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == "__main__":
     main()
