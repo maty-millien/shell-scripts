@@ -8,6 +8,8 @@ import time
 import signal
 from mistralai import Mistral
 
+AI_MODEL = "mistral-large-latest"
+
 def rgb_to_ansi(r, g, b, bold=True):
     bold_code = "1;" if bold else ""
     return f"\033[{bold_code}38;2;{r};{g};{b}m"
@@ -42,8 +44,6 @@ def warning_gradient(text):
 def white_gradient(text):
     return gradient_text(text, (250, 250, 250), (225, 234, 238), bold=False)
 
-AI_MODEL = "mistral-large-latest"
-
 def is_git_repository():
     try:
         subprocess.check_output(['git', 'rev-parse', '--git-dir'], stderr=subprocess.STDOUT)
@@ -65,10 +65,8 @@ def is_initial_commit():
 def get_changes_summary():
     try:
         if is_initial_commit():
-            # For initial commit, show staged changes
             result = subprocess.check_output(['git', 'diff', '--cached'])
         else:
-            # For subsequent commits, compare with HEAD
             result = subprocess.check_output(['git', 'diff', 'HEAD'])
         return '\n'.join(['\t' + line for line in result.decode().splitlines()])
     except subprocess.CalledProcessError as e:
