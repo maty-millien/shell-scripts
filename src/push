@@ -143,7 +143,7 @@ def generate_commit_message(message=None):
         response = input(warning_gradient("🔍 Review the commit message. Do you want to proceed? [Y/n] "))
         if response.lower() not in ('y', 'yes', ''):
             print(info_gradient("🔄 Regenerating commit message..."))
-            generate_commit_message()
+            return generate_commit_message()
 
         with open('commit_msg.txt', 'w') as f:
             f.write(commit_message)
