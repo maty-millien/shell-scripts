@@ -53,7 +53,7 @@ def is_git_repository():
 
 def get_changed_files(filter_type):
     result = subprocess.check_output(['git', 'diff', '--cached', '--name-only', f'--diff-filter={filter_type}'])
-    return ['\t' + line for line in result.decode().splitlines()]
+    return ["      " + line for line in result.decode().splitlines()]
 
 def is_initial_commit():
     try:
@@ -97,6 +97,16 @@ def request_ai(prompt, model=AI_MODEL):
         print(f"Error: {str(e)}")
         return None
 
+def box_print(text):
+    lines = text.split('\n')
+    width = max(len(line) for line in lines)
+    
+    box = f"╭{'─' * (width + 2)}╮\n"
+    for line in lines:
+        box += f"│ {line:<{width}} │\n"
+    box += f"╰{'─' * (width + 2)}╯"
+    return box
+
 def generate_commit_message(message=None):
     try:
         added_files = get_changed_files('A')
@@ -106,7 +116,7 @@ def generate_commit_message(message=None):
 
         changes_summary = get_changes_summary()
 
-        print(info_gradient("🤖 Asking AI to summarize changes..."))
+        print(info_gradient("🤖 AI generating commit message..."))
         ai_summary = request_ai(changes_summary)
 
         added_count = len(added_files)
@@ -128,9 +138,7 @@ def generate_commit_message(message=None):
                 commit_message += f"\n\nRenamed ({renamed_count}):\n" + '\n'.join(renamed_files)
 
         print(success_gradient("✅ Successfully generated commit message"))
-        print(white_gradient("\"\"\""))
-        print(white_gradient(commit_message))
-        print(white_gradient("\"\"\""))
+        print(white_gradient(box_print(commit_message)))
         
         response = input(warning_gradient("🔍 Review the commit message. Do you want to proceed? [Y/n] "))
         if response.lower() not in ('y', 'yes', ''):
@@ -161,6 +169,7 @@ def main():
             print(error_gradient("❌ Not a git repository"))
             sys.exit(1)
 
+        print(warning_gradient("🔍 Checking for changes..."))
         subprocess.run(['git', 'add', '.'])
 
         status = subprocess.check_output(['git', 'status', '--porcelain']).decode().strip()
@@ -175,7 +184,7 @@ def main():
         sys.exit(0)
 
 def signal_handler(sig, frame):
-    print('\n' + warning_gradient("👋 Exiting gracefully..."))
+    print('\n' + warning_gradient("👋 Exiting..."))
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
