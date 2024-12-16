@@ -51,12 +51,6 @@ EXPORT_FILE = "coding-style-reports.log"
 IMAGE_LAST_PULL_FILE = "/tmp/coding_style_checker_last_pull"
 BANNED_EXTENSIONS = ['md']
 
-def show_usage():
-    print(f"\nUsage: {os.path.basename(sys.argv[0])} DELIVERY_DIR REPORTS_DIR")
-    print("\tDELIVERY_DIR\tShould be the directory where your project files are")
-    print("\tREPORTS_DIR\tShould be the directory where we output the reports")
-    print("\t\t\tTake note that existing reports will be overriden\n")
-
 def strip_ansi(text):
     import re
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -148,12 +142,6 @@ def should_pull_image(force_pull):
             return time_diff >= 86400
     return True
 
-def clear_previous_lines(num_lines):
-    """Clear the specified number of previous lines in terminal."""
-    for _ in range(num_lines):
-        sys.stdout.write('\x1b[1A')
-        sys.stdout.write('\x1b[2K')
-
 def main():
     parser = argparse.ArgumentParser(description='Coding style checker')
     parser.add_argument('-f', action='store_true', help='Force pull latest image')
@@ -189,7 +177,7 @@ def main():
             status = requests.head("https://ghcr.io/v2/epitech/coding-style-checker/manifests/latest", headers=headers)
             
             if status.ok:
-                print(f"🚚 {info_gradient('Pulling latest coding style checker image...')}")
+                print(f"🚚 {info_gradient('Pulling latest image...')}")
                 subprocess.run(base_exec_cmd + ['pull', 'ghcr.io/epitech/coding-style-checker:latest'], 
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 subprocess.run(base_exec_cmd + ['image', 'prune', '-f'],
@@ -198,9 +186,9 @@ def main():
                 with open(IMAGE_LAST_PULL_FILE, 'w') as f:
                     f.write(str(int(time.time())))
         except Exception:
-            print(f"{warning_gradient('WARNING: Skipping image download')}")
+            print(f"❌ {error_gradient('Failed to pull latest image')}")
     
-    print(f"🕒 {purple_gradient('Using cached coding style checker image...')}")
+    print(f"🕒 {purple_gradient('Using cached image...')}")
     print(f"🔍 {info_gradient('Checking coding style...')}")
     
     subprocess.run(base_exec_cmd + [
@@ -211,7 +199,6 @@ def main():
         '/mnt/delivery', '/mnt/reports'
     ])
     
-    clear_previous_lines(2)
     display_results()
     
     if os.path.exists(EXPORT_FILE):
