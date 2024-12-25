@@ -3,16 +3,17 @@
 import os
 import sys
 import subprocess
-import json
-import time
 import signal
 from mistralai import Mistral
+from dotenv import load_dotenv
 
 AI_MODEL = "mistral-large-latest"
+
 
 def rgb_to_ansi(r, g, b, bold=True):
     bold_code = "1;" if bold else ""
     return f"\033[{bold_code}38;2;{r};{g};{b}m"
+
 
 def gradient_text(text, start_rgb, end_rgb, bold=True):
     result = ""
@@ -29,20 +30,26 @@ def gradient_text(text, start_rgb, end_rgb, bold=True):
     
     return result + "\033[0m"
 
+
 def error_gradient(text):
     return gradient_text(text, (255, 40, 40), (255, 40, 255))
+
 
 def info_gradient(text):
     return gradient_text(text, (40, 255, 255), (40, 40, 255))
 
+
 def success_gradient(text):
     return gradient_text(text, (40, 255, 40), (40, 255, 180))
+
 
 def warning_gradient(text):
     return gradient_text(text, (255, 255, 40), (255, 180, 40))
 
+
 def white_gradient(text):
     return gradient_text(text, (250, 250, 250), (225, 234, 238), bold=False)
+
 
 def is_git_repository():
     try:
@@ -51,9 +58,11 @@ def is_git_repository():
     except subprocess.CalledProcessError:
         return False
 
+
 def get_changed_files(filter_type):
     result = subprocess.check_output(['git', 'diff', '--cached', '--name-only', f'--diff-filter={filter_type}'])
     return ["      " + line for line in result.decode().splitlines()]
+
 
 def is_initial_commit():
     try:
@@ -61,6 +70,7 @@ def is_initial_commit():
         return False
     except subprocess.CalledProcessError:
         return True
+
 
 def get_changes_summary():
     try:
@@ -73,16 +83,21 @@ def get_changes_summary():
         print(error_gradient(f"❌ Error getting changes: {str(e)}"))
         sys.exit(1)
 
+
 def request_ai(prompt, model=AI_MODEL):
-    system_prompt_path = '/home/maty/Scripts/src/system_prompt.txt'
+    system_prompt_path = '/home/maty/Scripts/src/sys_prompt.md'
     if not os.path.isfile(system_prompt_path):
-        print(error_gradient("❌ Error: system_prompt.txt file not found."))
-        sys.exit(1)
+        system_prompt_path = '/Users/maty/Scripts/src/sys_prompt.md'
+        if not os.path.isfile(system_prompt_path):
+            print(error_gradient("❌ Error: 'sys_prompt.md' file not found."))
+            sys.exit(1)
     with open(system_prompt_path, 'r') as f:
         system_prompt = f.read()
 
-    api_key = os.environ.get('MISTRAL_API_KEY')
+    api_key = os.getenv('MISTRAL_API_KEY')
     client = Mistral(api_key)
+
+    print(info_gradient("🤖 AI generating commit message..."))
 
     try:
         stream = client.chat.complete(
@@ -97,6 +112,7 @@ def request_ai(prompt, model=AI_MODEL):
         print(f"Error: {str(e)}")
         return None
 
+
 def box_print(text):
     lines = text.split('\n')
     width = max(len(line) for line in lines)
@@ -107,6 +123,7 @@ def box_print(text):
     box += f"╰{'─' * (width + 2)}╯"
     return box
 
+
 def generate_commit_message(message=None):
     try:
         added_files = get_changed_files('A')
@@ -116,7 +133,6 @@ def generate_commit_message(message=None):
 
         changes_summary = get_changes_summary()
 
-        print(info_gradient("🤖 AI generating commit message..."))
         ai_summary = request_ai(changes_summary)
 
         added_count = len(added_files)
@@ -163,7 +179,17 @@ def generate_commit_message(message=None):
         print('\n' + warning_gradient("👋 Commit cancelled"))
         sys.exit(0)
 
+
+def signal_handler(sig, frame):
+    print('\n' + warning_gradient("👋 Exiting..."))
+    sys.exit(0)
+
+
 def main():
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    load_dotenv()
+
     try:
         if not is_git_repository():
             print(error_gradient("❌ Not a git repository"))
@@ -182,12 +208,7 @@ def main():
     except KeyboardInterrupt:
         print('\n' + warning_gradient("👋 Operation cancelled"))
         sys.exit(0)
-
-def signal_handler(sig, frame):
-    print('\n' + warning_gradient("👋 Exiting..."))
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
+        
 
 if __name__ == "__main__":
     main()

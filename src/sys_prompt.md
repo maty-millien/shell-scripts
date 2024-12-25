@@ -1,4 +1,3 @@
-INSTRUCTIONS:
 Write a VERY SHORT commit message first line in this format: <type>(<scope>): <short summary>
 Add "!" after type/scope for breaking changes.
 
