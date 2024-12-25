@@ -10,9 +10,6 @@ from dotenv import load_dotenv
 from mistralai import Mistral
 
 
-AI_MODEL = "mistral-large-latest"
-
-
 def gradient_text(text, start_hex, end_hex, bold=True):
     result = ""
     start_hex = start_hex.lstrip('#')
@@ -31,20 +28,20 @@ def gradient_text(text, start_hex, end_hex, bold=True):
     return result + "\033[0m"
 
 
-def print_gradient(text, type="light_gray"):
+def print_gradient(text, type="light_gray", line_break=True):
     colors = {
         "red_magenta": ("#FF2828", "#FF28FF"),
         "cyan_blue": ("#28FFFF", "#2828FF"),
         "green_lime": ("#28FF28", "#28FFB4"),
         "yellow_orange": ("#FFFF28", "#FFB428"),
         "light_gray": ("#FAFAFA", "#E1EAEE"),
-        "pink": ("#FF69B4", "#FF1493")
+        "pink_purple": ("#FF28FF", "#B428FF")
     }
     
     start_hex, end_hex = colors.get(type, colors["light_gray"])
     print(gradient_text(text, start_hex, end_hex,
-                        bold=(type != "light_gray")))
-
+                        bold=(type != "light_gray")),
+          end='\n' if line_break else '')
 
 def box_print(text):
     lines = text.split('\n')
@@ -90,11 +87,12 @@ def get_changes_summary():
             result = subprocess.check_output(['git', 'diff', 'HEAD'])
         return '\n'.join(['\t' + line for line in result.decode().splitlines()])
     except subprocess.CalledProcessError as e:
-        print_gradient(f"❌ Error getting changes: {str(e)}", "red_magenta")
+        print_gradient(f"❌ Error: could not get changes summary: {str(e)}",
+                       "red_magenta")
         sys.exit(1)
 
 
-def request_ai(prompt, model=AI_MODEL):
+def request_ai(prompt):
     system_prompt_path = '/home/maty/Scripts/src/sys_prompt.md'
     if not os.path.isfile(system_prompt_path):
         system_prompt_path = '/Users/maty/Scripts/src/sys_prompt.md'
@@ -108,11 +106,11 @@ def request_ai(prompt, model=AI_MODEL):
     api_key = os.getenv('MISTRAL_API_KEY')
     client = Mistral(api_key)
 
-    print_gradient("🔍 AI generating commit message...", "cyan_blue")
+    print_gradient("💭 AI generating commit message...", "cyan_blue")
 
     try:
         stream = client.chat.complete(
-            model=model,
+            model=os.getenv('MISTRAL_MODEL'),
             messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -160,7 +158,8 @@ def generate_commit_message(message=None):
         print_gradient("✅ Successfully generated commit message", "green_lime")
         print_gradient(box_print(commit_message), "light_gray")
         
-        print_gradient("🔍 Do you want to proceed? [Y/n] ", "yellow_orange")
+        print_gradient("🛎️ Do you want to proceed? [Y/n] ", "yellow_orange",
+                       False)
         response = input()
         if response.lower() not in ('y', 'yes', ''):
             return generate_commit_message()
@@ -208,7 +207,7 @@ def main():
             print_gradient("❌ Error: Not a git repository", "red_magenta")
             sys.exit(1)
 
-        print_gradient("🔍 Checking for changes...", "yellow_orange")
+        print_gradient("🚧 Checking for changes...", "yellow_orange")
         subprocess.run(['git', 'add', '.'])
 
         status = subprocess.check_output([
