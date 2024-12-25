@@ -33,24 +33,17 @@ def gradient_text(text, start_rgb, end_rgb, bold=True):
     return result + "\033[0m"
 
 
-def error_gradient(text):
-    return gradient_text(text, (255, 40, 40), (255, 40, 255))
+def gradient(text, type="light_gray"):
+    gradients = {
+        "red_magenta": ((255, 40, 40), (255, 40, 255)),
+        "cyan_blue": ((40, 255, 255), (40, 40, 255)),
+        "green_lime": ((40, 255, 40), (40, 255, 180)),
+        "yellow_orange": ((255, 255, 40), (255, 180, 40)),
+        "light_gray": ((250, 250, 250), (225, 234, 238))
+    }
 
-
-def info_gradient(text):
-    return gradient_text(text, (40, 255, 255), (40, 40, 255))
-
-
-def success_gradient(text):
-    return gradient_text(text, (40, 255, 40), (40, 255, 180))
-
-
-def warning_gradient(text):
-    return gradient_text(text, (255, 255, 40), (255, 180, 40))
-
-
-def white_gradient(text):
-    return gradient_text(text, (250, 250, 250), (225, 234, 238), bold=False)
+    start_rgb, end_rgb = gradients.get(type, gradients["light_gray"])
+    return gradient_text(text, start_rgb, end_rgb, bold=(type != "light_gray"))
 
 
 def is_git_repository():
@@ -82,7 +75,7 @@ def get_changes_summary():
             result = subprocess.check_output(['git', 'diff', 'HEAD'])
         return '\n'.join(['\t' + line for line in result.decode().splitlines()])
     except subprocess.CalledProcessError as e:
-        print(error_gradient(f"❌ Error getting changes: {str(e)}"))
+        print(gradient(f"❌ Error getting changes: {str(e)}", "red_magenta"))
         sys.exit(1)
 
 
@@ -91,7 +84,7 @@ def request_ai(prompt, model=AI_MODEL):
     if not os.path.isfile(system_prompt_path):
         system_prompt_path = '/Users/maty/Scripts/src/sys_prompt.md'
         if not os.path.isfile(system_prompt_path):
-            print(error_gradient("❌ Error: 'sys_prompt.md' file not found."))
+            print(gradient("❌ Error: 'sys_prompt.md' file not found.", "red_magenta"))
             sys.exit(1)
     with open(system_prompt_path, 'r') as f:
         system_prompt = f.read()
@@ -99,7 +92,7 @@ def request_ai(prompt, model=AI_MODEL):
     api_key = os.getenv('MISTRAL_API_KEY')
     client = Mistral(api_key)
 
-    print(info_gradient("🤖 AI generating commit message..."))
+    print(gradient("🤖 AI generating commit message...", "cyan_blue"))
 
     try:
         stream = client.chat.complete(
@@ -155,12 +148,12 @@ def generate_commit_message(message=None):
             if renamed_count > 0:
                 commit_message += f"\n\nRenamed ({renamed_count}):\n" + '\n'.join(renamed_files)
 
-        print(success_gradient("✅ Successfully generated commit message"))
-        print(white_gradient(box_print(commit_message)))
+        print(gradient("✅ Successfully generated commit message", "green_lime"))
+        print(gradient(box_print(commit_message), "light_gray"))
         
-        response = input(warning_gradient("🔍 Review the commit message. Do you want to proceed? [Y/n] "))
+        response = input(gradient("🔍 Review the commit message. Do you want to proceed? [Y/n] ", "yellow_orange"))
         if response.lower() not in ('y', 'yes', ''):
-            print(info_gradient("🔄 Regenerating commit message..."))
+            print(gradient("🔄 Regenerating commit message...", "cyan_blue"))
             return generate_commit_message()
 
         with open('commit_msg.txt', 'w') as f:
@@ -170,20 +163,20 @@ def generate_commit_message(message=None):
         os.remove('commit_msg.txt')
 
         current_branch = subprocess.check_output(['git', 'branch', '--show-current']).decode().strip()
-        print(info_gradient(f"🚀 Pushing to {current_branch}..."))
+        print(gradient(f"🚀 Pushing to {current_branch}...", "cyan_blue"))
         push_result = subprocess.run(['git', 'push', 'origin', current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if push_result.returncode == 0:
-            print(success_gradient(f"✅ Successfully pushed to {current_branch}"))
+            print(gradient(f"✅ Successfully pushed to {current_branch}", "green_lime"))
         else:
-            print(error_gradient(f"❌ Failed to push to {current_branch}"))
-            print(warning_gradient(f"💡 Try running: git push origin {current_branch} manually"))
+            print(gradient(f"❌ Failed to push to {current_branch}", "red_magenta"))
+            print(gradient(f"💡 Try running: git push origin {current_branch} manually", "yellow_orange"))
     except KeyboardInterrupt:
-        print('\n' + warning_gradient("👋 Commit cancelled"))
+        print('\n' + gradient("👋 Commit cancelled", "yellow_orange"))
         sys.exit(0)
 
 
 def signal_handler(sig, frame):
-    print('\n' + warning_gradient("👋 Exiting..."))
+    print('\n' + gradient("👋 Exiting...", "yellow_orange"))
     sys.exit(0)
 
 
@@ -194,10 +187,10 @@ def main():
 
     try:
         if not is_git_repository():
-            print(error_gradient("❌ Not a git repository"))
+            print(gradient("❌ Not a git repository", "red_magenta"))
             sys.exit(1)
 
-        print(warning_gradient("🔍 Checking for changes..."))
+        print(gradient("🔍 Checking for changes...", "yellow_orange"))
         subprocess.run(['git', 'add', '.'])
 
         status = subprocess.check_output(['git', 'status', '--porcelain']).decode().strip()
@@ -205,10 +198,10 @@ def main():
             message = sys.argv[1] if len(sys.argv) > 1 else None
             generate_commit_message(message)
         else:
-            print(error_gradient("❌ No changes to commit"))
+            print(gradient("❌ No changes to commit", "red_magenta"))
             sys.exit(1)
     except KeyboardInterrupt:
-        print('\n' + warning_gradient("👋 Operation cancelled"))
+        print('\n' + gradient("👋 Operation cancelled", "yellow_orange"))
         sys.exit(0)
         
 
