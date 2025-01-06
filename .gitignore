@@ -3,6 +3,7 @@
 
 # IDE
 .vscode/
+.mypy_cache/
 
 # Environment
 .env
