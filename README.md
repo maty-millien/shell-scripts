@@ -1,10 +1,20 @@
-# Shell Scripts Repository
+# 🛠️ Shell Scripts Repository
 
-This repository contains a collection of useful and reusable shell scripts to automate various tasks.
+This repository contains a collection of useful and reusable shell scripts to automate various tasks and enhance development workflows.
 
-## Scripts
+## 📜 Available Scripts
 
-Here is a list of the available scripts in this repository:
+Here's a detailed list of the available scripts in this repository:
 
-1. **clean**: Remove temporary files and directories from the current directory.
-3. **cs**: A much prettier version of Epitech's `coding-style.sh` script that checks the coding style of C files.
+### 🧹 clean
+A Python script that recursively removes temporary files and build artifacts:
+- Cleans common C/C++ build files (*.o, *.a, *.out, etc.)
+- Removes editor backup files and swap files
+- Supports force cleaning with `-f` flag
+- Colorful terminal output with progress information
+
+### 🎨 cs
+An enhanced version of Epitech's coding style checker:
+- Beautiful gradient-colored output
+- Improved error reporting and formatting
+- Automatic image updates and caching

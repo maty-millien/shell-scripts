@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+
+def rgb_to_ansi(r, g, b, bold=True):
+    bold_code = "1;" if bold else ""
+    return f"\033[{bold_code}38;2;{r};{g};{b}m"
+
+
+def gradient_text(text, start_rgb, end_rgb, bold=True):
+    result = ""
+    start_r, start_g, start_b = start_rgb
+    end_r, end_g, end_b = end_rgb
+
+    for i, char in enumerate(text):
+        progress = i / (len(text) - 1) if len(text) > 1 else 0
+        r = int(start_r + (end_r - start_r) * progress)
+        g = int(start_g + (end_g - start_g) * progress)
+        b = int(start_b + (end_b - start_b) * progress)
+
+        result += f"{rgb_to_ansi(r, g, b, bold)}{char}"
+
+    return result + "\033[0m"
+
+
+def success_gradient(text):
+    return gradient_text(text, (255, 255, 40), (40, 255, 40))
+
+
+def info_gradient(text):
+    return gradient_text(text, (40, 255, 255), (40, 40, 255))
+
+
+def failure_gradient(text):
+    return gradient_text(text, (255, 40, 40), (255, 40, 255))
+
+
+CLEANUP_PATTERNS = [
+    "*.o",
+    "*.a",
+    "*.gcno",
+    "*.gcda",
+    "*.gcov",
+    "vgcore.*",
+    "*.out",
+    "*~",
+    "*.swp",
+    "*.swo",
+]
+
+
+def clean_directory(directory, force=False):
+    cleaned_files = 0
+    directory_path = Path(directory)
+
+    for pattern in CLEANUP_PATTERNS:
+        for file_path in directory_path.rglob(pattern):
+            if file_path.is_file():
+                try:
+                    file_path.unlink()
+                    print(f"🗑️  {info_gradient('Removed:')} {file_path}")
+                    cleaned_files += 1
+                except PermissionError:
+                    if force:
+                        file_path.chmod(0o777)
+                        file_path.unlink()
+                        print(
+                            f"🗑️  {info_gradient('Force removed:')} {file_path}")
+                        cleaned_files += 1
+                    else:
+                        print(
+                            f"❌ {failure_gradient('Permission denied:')} {file_path}")
+
+    return cleaned_files
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Clean C programming temporary files')
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='Force remove files (change permissions if needed)')
+    parser.add_argument('-p', '--path', default='.',
+                        help='Path to clean (default: current directory)')
+    args = parser.parse_args()
+
+    print(f"🧹 {info_gradient('Cleaning temporary files...')}")
+
+    cleaned = clean_directory(args.path, args.force)
+
+    if cleaned > 0:
+        s = 's' if cleaned > 1 else ''
+        print(f"\n✨ {success_gradient(f'Cleaned {cleaned} file{s}!')}")
+    else:
+        print(f"\n✨ {success_gradient('Directory already clean!')}")
+
+
+if __name__ == "__main__":
+    main()
