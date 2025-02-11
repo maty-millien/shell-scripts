@@ -204,8 +204,13 @@ def main():
 
                 with open(IMAGE_LAST_PULL_FILE, 'w') as f:
                     f.write(str(int(time.time())))
-        except Exception:
+        except Exception as e:
             print(f"❌ {error_gradient('Failed to pull latest image')}")
+            print(f"🔍 {error_gradient('Error details:')} {str(e)}")
+            if isinstance(e, requests.exceptions.ConnectionError):
+                print(f"💡 {warning_gradient('This might be due to network connectivity issues')}")
+            elif isinstance(e, requests.exceptions.RequestException):
+                print(f"💡 {warning_gradient('This might be due to API access issues or rate limiting')}")
 
     print(f"🕒 {purple_gradient('Using cached image...')}")
     print(f"🔍 {info_gradient('Checking coding style...')}")
