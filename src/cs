@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 import time
@@ -55,10 +56,18 @@ def purple_gradient(text):
     return gradient_text(text, (147, 51, 234), (224, 57, 247))
 
 
-DOCKER_SOCKET_PATH = '/var/run/docker.sock'
+# Detect OS and set appropriate container engine
+IS_MACOS = platform.system() == 'Darwin'
+CONTAINER_ENGINE = 'podman' if IS_MACOS else 'docker'
+SOCKET_PATH = '/run/podman/podman.sock' if IS_MACOS else '/var/run/docker.sock'
 EXPORT_FILE = "coding-style-reports.log"
 IMAGE_LAST_PULL_FILE = "/tmp/coding_style_checker_last_pull"
+CONFIG_FILE = os.path.expanduser("~/.coding_style_checker.conf")
 BANNED_EXTENSIONS = ['md']
+# Local cache for container image
+LOCAL_IMAGE_NAME = "coding-style-checker:local"
+# Cache directory for container optimization
+CACHE_DIR = os.path.expanduser("~/.coding_style_cache")
 
 
 def strip_ansi(text):
@@ -156,34 +165,163 @@ def should_pull_image(force_pull):
 
 
 def main():
+    # Start measuring execution time at the very beginning
+    start_time = time.time()
+
     parser = argparse.ArgumentParser(description='Coding style checker')
     parser.add_argument('-f', action='store_true',
                         help='Force pull latest image')
+    parser.add_argument('--enable-haskell', action='store_true',
+                        help='Enable Haskell code style checking (disabled by default due to segfaults)')
+    parser.add_argument('--reset-config', action='store_true',
+                        help='Reset saved configuration')
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Disable container caching optimizations')
+    parser.add_argument('--force-cache', action='store_true',
+                        help='Force creating a local cache of the image')
     args = parser.parse_args()
 
     delivery_dir = os.getcwd()
     reports_dir = os.getcwd()
     force_pull = args.f
-    has_socket_access = os.access(DOCKER_SOCKET_PATH, os.R_OK)
-    base_exec_cmd = ['docker']
+    enable_haskell = args.enable_haskell
+    reset_config = args.reset_config
+    use_cache = not args.no_cache
+    force_cache = args.force_cache
+
+    # Create cache directory if it doesn't exist
+    if use_cache and not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+
+    # If force-cache is enabled, we need to make sure we're using cache
+    if force_cache:
+        use_cache = True
+
+    # Default command
+    base_exec_cmd = [CONTAINER_ENGINE]
 
     if os.path.exists(EXPORT_FILE):
         os.remove(EXPORT_FILE)
 
-    if not has_socket_access:
-        print(f"{warning_gradient('WARNING: Socket access is denied')}")
-        print(
-            f"To fix this we will add the current user to docker group with : sudo usermod -a -G docker {os.getenv('USER')}")
-        response = input("Do you want to proceed? (yes/no) ").lower()
+    # Handle configuration based on OS
+    if IS_MACOS:
+        # macOS with Podman
+        # Check if config file exists and load preferences
+        config = {}
+        if os.path.exists(CONFIG_FILE) and not reset_config:
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+            except:
+                # If config file is corrupted, reset it
+                config = {}
 
-        if response in ['yes', 'y']:
-            subprocess.run(['sudo', 'usermod', '-a', '-G',
-                           'docker', os.getenv('USER')])
-            print(
-                f"{warning_gradient('You must reboot your computer for the changes to take effect')}")
-        base_exec_cmd = ['sudo', 'docker']
+        # Reset config if requested
+        if reset_config:
+            if os.path.exists(CONFIG_FILE):
+                os.remove(CONFIG_FILE)
+            print(f"🔄 {info_gradient('Configuration has been reset')}")
+            config = {}
 
-    if should_pull_image(force_pull):
+        # Check if we already have a saved preference for sudo
+        use_sudo = config.get('use_sudo', False)
+
+        if use_sudo:
+            base_exec_cmd = ['sudo', CONTAINER_ENGINE]
+        else:
+            # Only check socket access if we don't already have a preference
+            has_socket_access = os.access(SOCKET_PATH, os.R_OK)
+
+            if not has_socket_access:
+                # Check if podman machine is available (faster than socket)
+                try:
+                    machine_result = subprocess.run(['podman', 'machine', 'list'],
+                                                  capture_output=True, text=True)
+                    if "Running" in machine_result.stdout:
+                        print(f"{info_gradient('Using podman machine directly (faster)')}")
+                        # No need for sudo with machine
+                        config['use_sudo'] = False
+                        with open(CONFIG_FILE, 'w') as f:
+                            json.dump(config, f)
+                    else:
+                        print(f"{warning_gradient('WARNING: Socket access is denied')}")
+                        print(f"To fix this you may need to configure Podman socket permissions or run with sudo")
+                        response = input("Do you want to proceed with sudo? (yes/no) ").lower()
+
+                        if response in ['yes', 'y']:
+                            base_exec_cmd = ['sudo', CONTAINER_ENGINE]
+                            print(f"{info_gradient('Using sudo with Podman')}")
+
+                            # Ask if the user wants to save this preference
+                            save_response = input("Do you want to save this preference? (yes/no) ").lower()
+                            if save_response in ['yes', 'y']:
+                                config['use_sudo'] = True
+                                with open(CONFIG_FILE, 'w') as f:
+                                    json.dump(config, f)
+                                print(f"💾 {success_gradient('Preference saved')}")
+                        else:
+                            print(f"{warning_gradient('Continuing without socket access, this may fail')}")
+                except Exception:
+                    print(f"{warning_gradient('WARNING: Socket access is denied')}")
+                    print(f"To fix this you may need to configure Podman socket permissions or run with sudo")
+                    response = input("Do you want to proceed with sudo? (yes/no) ").lower()
+
+                    if response in ['yes', 'y']:
+                        base_exec_cmd = ['sudo', CONTAINER_ENGINE]
+                        print(f"{info_gradient('Using sudo with Podman')}")
+
+                        # Ask if the user wants to save this preference
+                        save_response = input("Do you want to save this preference? (yes/no) ").lower()
+                        if save_response in ['yes', 'y']:
+                            config['use_sudo'] = True
+                            with open(CONFIG_FILE, 'w') as f:
+                                json.dump(config, f)
+                            print(f"💾 {success_gradient('Preference saved')}")
+                    else:
+                        print(f"{warning_gradient('Continuing without socket access, this may fail')}")
+    else:
+        # Linux with Docker
+        has_socket_access = os.access(SOCKET_PATH, os.R_OK)
+
+        if not has_socket_access:
+            print(f"{warning_gradient('WARNING: Socket access is denied')}")
+            print(f"To fix this we will add the current user to docker group with : sudo usermod -a -G docker {os.getenv('USER')}")
+            response = input("Do you want to proceed? (yes/no) ").lower()
+
+            if response in ['yes', 'y']:
+                subprocess.run(['sudo', 'usermod', '-a', '-G', 'docker', os.getenv('USER')])
+                print(f"{warning_gradient('You must reboot your computer for the changes to take effect')}")
+            base_exec_cmd = ['sudo', CONTAINER_ENGINE]
+
+    # Check if we should use a local cached image
+    use_local_image = False
+    if use_cache:
+        # Check if local image exists - improved detection
+        try:
+            result = subprocess.run(
+                base_exec_cmd + ['image', 'exists', LOCAL_IMAGE_NAME],
+                capture_output=True, text=True, check=False
+            )
+            # If the command returns 0, the image exists
+            use_local_image = result.returncode == 0
+
+            # Fallback method if 'image exists' command isn't supported
+            if result.returncode != 0 and "unknown command" in result.stderr:
+                result = subprocess.run(
+                    base_exec_cmd + ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'],
+                    capture_output=True, text=True
+                )
+                use_local_image = f"{LOCAL_IMAGE_NAME}:latest" in result.stdout or LOCAL_IMAGE_NAME in result.stdout
+
+            # Log the detection result for debugging
+            if use_local_image:
+                print(f"💡 {info_gradient('Local cached image detected')}")
+        except Exception as e:
+            print(f"⚠️ {warning_gradient(f'Error checking for local image: {str(e)}')}")
+            # Continue with remote image
+
+    # Only pull if needed and not using local image, or if force-cache is enabled
+    if (should_pull_image(force_pull) and not use_local_image) or force_cache:
         print(f"🔑 {warning_gradient('Fetching token...')}")
         try:
             import requests
@@ -199,6 +337,30 @@ def main():
                 print(f"🚚 {info_gradient('Pulling latest image...')}")
                 subprocess.run(base_exec_cmd + ['pull', 'ghcr.io/epitech/coding-style-checker:latest'],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                # Tag the image locally for faster future access
+                if use_cache:
+                    print(f"🔄 {info_gradient('Saving image to local cache for future use')}")
+                    tag_result = subprocess.run(
+                        base_exec_cmd + ['tag', 'ghcr.io/epitech/coding-style-checker:latest', LOCAL_IMAGE_NAME],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+                    )
+                    if tag_result.returncode == 0:
+                        use_local_image = True
+                        print(f"✅ {success_gradient('Image successfully cached locally')}")
+                    else:
+                        print(f"⚠️ {warning_gradient('Failed to cache image locally: ' + tag_result.stderr.strip())}")
+
+                    # Verify the image was properly tagged
+                    verify_result = subprocess.run(
+                        base_exec_cmd + ['image', 'exists', LOCAL_IMAGE_NAME],
+                        capture_output=True, text=True, check=False
+                    )
+                    if verify_result.returncode == 0:
+                        use_local_image = True
+                    else:
+                        print(f"⚠️ {warning_gradient('Image tagging verification failed, using remote image')}")
+
                 subprocess.run(base_exec_cmd + ['image', 'prune', '-f'],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -212,21 +374,101 @@ def main():
             elif isinstance(e, requests.exceptions.RequestException):
                 print(f"💡 {warning_gradient('This might be due to API access issues or rate limiting')}")
 
-    print(f"🕒 {purple_gradient('Using cached image...')}")
+            # Try to use local image if available
+            if use_cache:
+                print(f"🔍 {info_gradient('Checking for cached local image as fallback...')}")
+                try:
+                    # Try with 'exists' command first
+                    exists_result = subprocess.run(
+                        base_exec_cmd + ['image', 'exists', LOCAL_IMAGE_NAME],
+                        capture_output=True, text=True, check=False
+                    )
+                    if exists_result.returncode == 0:
+                        use_local_image = True
+                        print(f"💡 {success_gradient('Found cached local image to use instead')}")
+                    else:
+                        # Fallback to listing images
+                        ls_result = subprocess.run(
+                            base_exec_cmd + ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'],
+                            capture_output=True, text=True
+                        )
+                        if f"{LOCAL_IMAGE_NAME}:latest" in ls_result.stdout or LOCAL_IMAGE_NAME in ls_result.stdout:
+                            use_local_image = True
+                            print(f"💡 {success_gradient('Found cached local image to use instead')}")
+                        else:
+                            print(f"❌ {error_gradient('No local cached image found either')}")
+                except Exception as e:
+                    print(f"❌ {error_gradient(f'Error checking for local image: {str(e)}')}")
+
+    print(f"🕒 {purple_gradient('Using ' + ('cached local' if use_local_image else 'remote') + ' image...')}")
     print(f"🔍 {info_gradient('Checking coding style...')}")
 
-    subprocess.run(base_exec_cmd + [
+    # Build the run command with optimizations
+    run_cmd = base_exec_cmd + [
         'run', '--platform', 'linux/amd64', '--rm', '-i',
+    ]
+
+    # Add cache volume for faster execution
+    if use_cache:
+        run_cmd.extend(['-v', f"{CACHE_DIR}:/tmp/cache"])
+
+    # Add file mounts
+    run_cmd.extend([
         '-v', f"{delivery_dir}:/mnt/delivery",
         '-v', f"{reports_dir}:/mnt/reports",
-        'ghcr.io/epitech/coding-style-checker:latest',
+    ])
+
+    # Add environment variables for Haskell checking (only on macOS with Podman)
+    if IS_MACOS and not enable_haskell:
+        run_cmd.extend(['-e', 'SKIP_HASKELL=1'])
+    elif IS_MACOS and enable_haskell:
+        print(f"⚠️ {warning_gradient('Haskell code style checking enabled (may cause segfaults)')}")
+
+    # Add performance optimization flags
+    if IS_MACOS:
+        # Memory limits to prevent segfaults but allow enough for performance
+        run_cmd.extend(['--memory=2g', '--memory-swap=2g'])
+
+    # Add CPU optimization flags
+    run_cmd.extend(['--cpu-shares=1024'])
+
+    # Use local image if available, otherwise use remote
+    image_name = LOCAL_IMAGE_NAME if use_local_image else 'ghcr.io/epitech/coding-style-checker:latest'
+
+    # Add the image and arguments
+    run_cmd.extend([
+        image_name,
         '/mnt/delivery', '/mnt/reports'
     ])
+
+    # Run the container with the built command
+    try:
+        if IS_MACOS:
+            result = subprocess.run(run_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"⚠️ {warning_gradient('Container exited with code')}: {result.returncode}")
+                if "Segmentation fault" in result.stderr:
+                    print(f"❌ {error_gradient('Segmentation fault detected in the container')}")
+                    if enable_haskell:
+                        print(f"💡 {info_gradient('Try running without --enable-haskell to skip Haskell checking')}")
+                if result.stderr:
+                    print(f"Error output: {result.stderr}")
+        else:
+            # On Linux, use the simpler approach
+            subprocess.run(run_cmd)
+    except Exception as e:
+        print(f"❌ {error_gradient('Failed to run container')}")
+        print(f"🔍 {error_gradient('Error details:')} {str(e)}")
+
+    end_time = time.time()
+    execution_time = end_time - start_time
 
     display_results()
 
     if os.path.exists(EXPORT_FILE):
         os.remove(EXPORT_FILE)
+
+    print(f"⏱️ {info_gradient(f'Execution completed in {execution_time:.2f} seconds')}")
 
 
 if __name__ == "__main__":
