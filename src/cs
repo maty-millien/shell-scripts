@@ -1,116 +1,197 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
 import os
 import subprocess
-import sys
 import time
-from datetime import datetime
-from pathlib import Path
+import sys
+
+# Plain ANSI color codes
+RED = "\033[1;31m"
+GREEN = "\033[1;32m"
+YELLOW = "\033[1;33m"
+BLUE = "\033[1;34m"
+MAGENTA = "\033[1;35m"
+CYAN = "\033[1;36m"
+WHITE = "\033[1;37m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+DARK_GRAY = "\033[0;90m"  # Adding dark gray color
 
 
-def rgb_to_ansi(r, g, b, bold=True):
-    bold_code = "1;" if bold else ""
-    return f"\033[{bold_code}38;2;{r};{g};{b}m"
+def colored_text(text, color):
+    """Apply a plain color to text"""
+    return f"{color}{text}{RESET}"
 
 
-def gradient_text(text, start_rgb, end_rgb, bold=True):
-    result = ""
-    start_r, start_g, start_b = start_rgb
-    end_r, end_g, end_b = end_rgb
-
-    for i, char in enumerate(text):
-        progress = i / (len(text) - 1) if len(text) > 1 else 0
-        r = int(start_r + (end_r - start_r) * progress)
-        g = int(start_g + (end_g - start_g) * progress)
-        b = int(start_b + (end_b - start_b) * progress)
-
-        result += f"{rgb_to_ansi(r, g, b, bold)}{char}"
-
-    return result + "\033[0m"
+def error_text(text):
+    return colored_text(text, RED)
 
 
-def error_gradient(text):
-    return gradient_text(text, (255, 40, 40), (255, 40, 255))
+def info_text(text):
+    return colored_text(text, CYAN)
 
 
-def info_gradient(text):
-    return gradient_text(text, (40, 255, 255), (40, 40, 255))
+def success_text(text):
+    return colored_text(text, GREEN)
 
 
-def success_gradient(text):
-    return gradient_text(text, (40, 255, 40), (40, 255, 180))
+def warning_text(text):
+    return colored_text(text, YELLOW)
 
 
-def warning_gradient(text):
-    return gradient_text(text, (255, 255, 40), (255, 180, 40))
+def white_text(text):
+    return colored_text(text, WHITE)
 
 
-def white_gradient(text):
-    return gradient_text(text, (250, 250, 250), (225, 234, 238), bold=False)
+def purple_text(text):
+    return colored_text(text, MAGENTA)
 
 
-def purple_gradient(text):
-    return gradient_text(text, (147, 51, 234), (224, 57, 247))
-
-
-DOCKER_SOCKET_PATH = '/var/run/docker.sock'
+DOCKER_SOCKET_PATH = "/var/run/docker.sock"
 EXPORT_FILE = "coding-style-reports.log"
 IMAGE_LAST_PULL_FILE = "/tmp/coding_style_checker_last_pull"
-BANNED_EXTENSIONS = ['md']
+BANNED_EXTENSIONS = ["md"]
+
+# Error code descriptions
+ERROR_DESCRIPTIONS = {
+    "C-O1": "Compiled/tmp files in repo",
+    "C-O2": "Only .c/.h files allowed",
+    "C-O3": "Too many funcs",
+    "C-O4": "Bad file/folder naming (snake_case)",
+    "C-G1": "Missing/wrong Epitech header",
+    "C-G2": "No empty line btwn funcs",
+    "C-G3": "Bad preprocessor indent",
+    "C-G4": "Non-const global vars",
+    "C-G5": "Including non-header files",
+    "C-G6": "Bad line endings/backslash",
+    "C-G7": "Trailing spaces",
+    "C-G8": "Empty lines at start/end",
+    "C-G9": "Constants not defined as const/macro",
+    "C-G10": "Using inline assembly",
+    "C-F1": "Func has >1 responsibility",
+    "C-F2": "Bad func name",
+    "C-F3": "Line >80 cols",
+    "C-F4": "Func body >20 lines",
+    "C-F5": "Func has >4 params",
+    "C-F6": "Missing void in func w/o params",
+    "C-F7": "Struct passed by copy not ptr",
+    "C-F8": "Comments in func body",
+    "C-F9": "Nested funcs used",
+    "C-L1": "Multi stmts on 1 line",
+    "C-L2": "Not using 4-space indent",
+    "C-L3": "Bad spacing around ops/keywords",
+    "C-L4": "Bad curly bracket placement",
+    "C-L5": "Vars not at func start/multi per line",
+    "C-L6": "Bad blank lines in func",
+    "C-V1": "Bad identifier naming",
+    "C-V2": "Struct too large/unrelated members",
+    "C-V3": "Bad ptr asterisk placement",
+    "C-C1": "Too many branches/nesting",
+    "C-C2": "Bad ternary usage",
+    "C-C3": "Using goto stmt",
+    "C-H1": "Invalid header content",
+    "C-H2": "Missing include guard",
+    "C-H3": "Multi-line/stmt macro",
+    "C-A1": "Missing const for unmodified ptrs",
+    "C-A2": "Using imprecise data types",
+    "C-A3": "No line break at EOF",
+    "C-A4": "Missing static for internal funcs",
+}
 
 
 def strip_ansi(text):
     import re
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
+
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    return ansi_escape.sub("", text)
 
 
 def display_results():
     last_file = ""
     sum_errors = 0
     max_width = 0
+    max_path_length = 0  # Track maximum path:line length for alignment
 
     if not os.path.exists(EXPORT_FILE):
         return
 
-    with open(EXPORT_FILE, 'r') as f:
+    # First pass: determine maximum path length and content width
+    with open(EXPORT_FILE, "r") as f:
         for line in f:
-            current_file = line.split(':')[0]
-            file_extension = current_file.split('.')[-1]
+            current_file = line.split(":")[0]
+            file_extension = current_file.split(".")[-1]
 
             if file_extension in BANNED_EXTENSIONS:
                 continue
 
-            path_and_line = ':'.join(line.split(':')[:2]).replace('./', '')
-            message = ':'.join(line.split(':')[2:]).strip()
-            error_code, description = message.split(':', 1)
-            formatted_message = f"{path_and_line:<30} {error_code.strip()} → {description.strip()}"
-            max_width = max(max_width, len(strip_ansi(formatted_message)))
+            path_and_line = ":".join(line.split(":")[:2]).replace("./", "")
+            max_path_length = max(max_path_length, len(path_and_line))
 
+            message = ":".join(line.split(":")[2:]).strip()
+            error_code, description = (
+                message.split(":", 1) if ":" in message else (message, "")
+            )
+            if "→" in error_code:
+                error_code, description = error_code.split("→", 1)
+                error_code = error_code.strip()
+
+            # Extract the actual error code
+            import re
+
+            clean_code = error_code
+            for prefix in ["MAJOR", "MINOR", "INFO"]:
+                if clean_code.startswith(prefix):
+                    clean_code = clean_code[len(prefix) :].strip()
+                    if clean_code.startswith("-"):
+                        clean_code = clean_code[1:].strip()
+
+            c_pattern = re.compile(r"C-[A-Z][0-9]+")
+            match = c_pattern.search(clean_code)
+            error_code_only = match.group(0) if match else clean_code
+
+            # Look up description for width calculation
+            desc_for_width = ""
+            if error_code_only in ERROR_DESCRIPTIONS:
+                desc_for_width = ERROR_DESCRIPTIONS[error_code_only]
+
+            # Include description in max_width calculation for more accurate box width
+            formatted_message = f"{path_and_line}  {error_code_only} [{desc_for_width}]"
+            max_width = max(
+                max_width,
+                len(strip_ansi(formatted_message))
+                + (max_path_length - len(path_and_line)),
+            )
+
+    # Make box width reasonable for terminal display (wider to accommodate full descriptions)
+    terminal_width = (
+        os.get_terminal_size().columns if hasattr(os, "get_terminal_size") else 80
+    )
+    desired_width = max(max_width, 80)  # Use full calculated width
+    max_width = min(desired_width, terminal_width - 5)  # Leave some margin
     box_width = max_width + 2
 
-    with open(EXPORT_FILE, 'r') as f:
+    # Second pass: display with consistent alignment
+    with open(EXPORT_FILE, "r") as f:
         for line in f:
-            current_file = line.split(':')[0]
-            file_extension = current_file.split('.')[-1]
+            current_file = line.split(":")[0]
+            file_extension = current_file.split(".")[-1]
 
             if file_extension in BANNED_EXTENSIONS:
                 continue
 
-            error_type = line.split(':')[2].split('-')[0].strip()
+            error_type = line.split(":")[2].split("-")[0].strip()
 
             color_func = {
-                'MINOR': warning_gradient,
-                'MAJOR': error_gradient,
-                'INFO': info_gradient
-            }.get(error_type, white_gradient)
+                "MINOR": warning_text,
+                "MAJOR": error_text,
+                "INFO": info_text,
+            }.get(error_type, white_text)
 
-            current_file = current_file.replace('./', '')
+            current_file = current_file.replace("./", "")
 
-            if os.path.exists('.gitignore'):
-                with open('.gitignore', 'r') as gitignore:
+            if os.path.exists(".gitignore"):
+                with open(".gitignore", "r") as gitignore:
                     patterns = gitignore.read().splitlines()
                     if current_file in patterns or f"*.{file_extension}" in patterns:
                         continue
@@ -119,26 +200,173 @@ def display_results():
                 if last_file:
                     print("╰" + "─" * box_width + "╯")
                 print("\n╭" + "─" * box_width + "╮")
-                colored_filename = purple_gradient(current_file)
-                padding = box_width - len(strip_ansi(f" 📄 {current_file} "))
+                # Extract only the base filename for the header
+                base_filename = os.path.basename(current_file)
+                colored_filename = purple_text(base_filename)
+                padding = box_width - len(strip_ansi(f" 📄 {base_filename} "))
                 print(f"│ 📄 {colored_filename}{' ' * padding}│")
                 print("├" + "─" * box_width + "┤")
                 last_file = current_file
 
-            path_and_line = ':'.join(line.split(':')[:2]).replace('./', '')
-            message = ':'.join(line.split(':')[2:]).strip()
-            error_code, description = message.split(':', 1)
-            formatted_message = f"{error_code.strip()} → {description.strip()}"
+            # Split path into filename and line number for coloring
+            path_parts = ":".join(line.split(":")[:2]).replace("./", "").split(":")
+            if len(path_parts) == 2:
+                filename, line_num = path_parts
+                # Colored path: filename in dark gray, line number in purple
+                colored_path = (
+                    f"{DARK_GRAY}{filename}{RESET}:{MAGENTA}{line_num}{RESET}"
+                )
+            else:
+                # Fallback if no line number is found
+                colored_path = f"{DARK_GRAY}{''.join(path_parts)}{RESET}"
 
-            colored_msg = color_func(formatted_message)
-            content = f"{path_and_line:<30} {formatted_message}"
-            padding = box_width - len(strip_ansi(content)) - 1
-            print(f"│ {path_and_line:<30} {colored_msg}{' ' * padding}│")
+            path_and_line = ":".join(line.split(":")[:2]).replace("./", "")
+            message = ":".join(line.split(":")[2:]).strip()
+
+            # Split the message on the arrow instead of colon
+            if "→" in message:
+                error_code, description = message.split("→", 1)
+            else:
+                error_code, description = message.split(":", 1)
+
+            error_code = error_code.strip()
+
+            # Ensure consistent alignment for error codes
+            padding_spaces = (
+                max_path_length - len(path_and_line) + 2
+            )  # 2 spaces after aligned path:line
+
+            # Extract the actual error code from the error message
+            error_code_for_lookup = None
+
+            # Try to extract C-XX pattern (like C-F4, C-L5) directly from the error code string
+            import re
+
+            # Clean up error code from severity prefixes
+            clean_code = error_code
+            for prefix in ["MAJOR", "MINOR", "INFO"]:
+                if clean_code.startswith(prefix):
+                    clean_code = clean_code[len(prefix) :].strip()
+                    if clean_code.startswith("-"):
+                        clean_code = clean_code[1:].strip()
+
+            # Look for C-X# pattern in the clean code or the whole message
+            c_pattern = re.compile(r"C-[A-Z][0-9]+")
+            match = c_pattern.search(clean_code)
+            if match:
+                error_code_for_lookup = match.group(0)
+            else:
+                # Try the entire message if not found in the error code
+                match = c_pattern.search(message)
+                if match:
+                    error_code_for_lookup = match.group(0)
+
+            # If we still don't have a match, and the clean code is just "C-L5" or similar
+            if not error_code_for_lookup and len(clean_code) >= 3:
+                # This handles cases where the code might be just "C-L5" directly
+                if clean_code.startswith("C-") and len(clean_code) >= 4:
+                    error_code_for_lookup = clean_code
+
+            # Get detailed description if available
+            description_to_show = ""
+            if error_code_for_lookup:
+                # Try direct lookup
+                detailed_desc = ERROR_DESCRIPTIONS.get(error_code_for_lookup, "")
+
+                # If that fails, try to find a key that ends with our digit
+                if (
+                    not detailed_desc
+                    and len(error_code_for_lookup) >= 3
+                    and error_code_for_lookup[0].isalpha()
+                    and error_code_for_lookup[2:].isdigit()
+                ):
+                    letter = error_code_for_lookup[0]
+                    number = error_code_for_lookup[2:]
+                    # Look for any key that matches pattern letter-something+number
+                    for key in ERROR_DESCRIPTIONS:
+                        if key.startswith(f"{letter}-") and key.endswith(number):
+                            detailed_desc = ERROR_DESCRIPTIONS[key]
+                            error_code_for_lookup = key  # Update to use the exact key
+                            break
+
+                if detailed_desc:
+                    description_to_show = detailed_desc
+                else:
+                    description_to_show = ""
+
+            # Make formatted message without the description for the main line
+            # Extract just the error code (C-XX pattern) without MAJOR/MINOR prefix
+            error_code_only = (
+                error_code_for_lookup if error_code_for_lookup else clean_code
+            )
+
+            # Use original color scheme based on error type (MAJOR=red, MINOR=yellow, INFO=blue)
+            # Original error_type is extracted earlier
+            error_color = {
+                "MAJOR": RED,
+                "MINOR": YELLOW,
+                "INFO": BLUE,
+            }.get(error_type, WHITE)
+
+            # Apply the appropriate color to the error code
+            error_display = f"{error_color}{error_code_only}{RESET}"
+
+            # Start with just the error code
+            formatted_message = f"{error_display}"
+
+            # Add description to the same line with better formatting
+            if description_to_show:
+                # No fixed width or padding, just display the full description with brackets hugging the text
+                formatted_message = f"{formatted_message} {DARK_GRAY}[{YELLOW}{description_to_show}{DARK_GRAY}]{RESET}"
+
+            # We don't need color_func anymore since we apply colors directly
+            # colored_msg = color_func(formatted_message)
+
+            # Determine if the line might be too long
+            # Need to account for the actual visible text length (without ANSI color codes)
+            visible_message = f"{error_code_only}"
+            if description_to_show:
+                visible_message = f"{visible_message} [{description_to_show}]"
+
+            content_width = len(
+                strip_ansi(f"{path_and_line}{' ' * padding_spaces}{visible_message}")
+            )
+
+            if content_width > box_width - 3:  # -3 for '│ ' and '│'
+                # Just use the error code if too long - no truncation of description
+                available_width = box_width - 3 - len(path_and_line) - padding_spaces
+                if available_width < len(error_code_only):
+                    # Not enough space even for the error code
+                    error_display = (
+                        f"{error_color}{error_code_only[:available_width-3]}...{RESET}"
+                    )
+                    formatted_message = f"{error_display}"
+                else:
+                    # Display full error code but skip description if no space
+                    formatted_message = f"{error_display}"
+
+                # Recalculate content width with the updated message
+                content_width = len(
+                    strip_ansi(
+                        f"{path_and_line}{' ' * padding_spaces}{error_code_only}"
+                    )
+                )
+
+            # Build the line with proper spacing
+            padding = (
+                box_width - content_width - 1
+            )  # -2 for '│ ' and '│' (fix alignment)
+            padding = max(0, padding)  # Ensure padding is not negative
+
+            # The colored_msg is now directly our formatted_message since we applied colors inline
+            print(
+                f"│ {colored_path}{' ' * padding_spaces}{formatted_message}{' ' * padding}│"
+            )
 
             sum_errors += 1
 
     if sum_errors == 0:
-        print(f"\n✅ {success_gradient('No coding style issues found')}")
+        print(f"\n✅ {success_text('No coding style issues found')}")
     else:
         print("╰" + "─" * box_width + "╯")
 
@@ -148,7 +376,7 @@ def should_pull_image(force_pull):
         return True
 
     if os.path.exists(IMAGE_LAST_PULL_FILE):
-        with open(IMAGE_LAST_PULL_FILE, 'r') as f:
+        with open(IMAGE_LAST_PULL_FILE, "r") as f:
             last_pull_time = int(f.read().strip())
             time_diff = int(time.time()) - last_pull_time
             return time_diff >= 86400
@@ -157,72 +385,98 @@ def should_pull_image(force_pull):
 
 def main():
     start_time = time.time()  # Start timing execution
-    parser = argparse.ArgumentParser(description='Coding style checker')
-    parser.add_argument('-f', action='store_true',
-                        help='Force pull latest image')
+    parser = argparse.ArgumentParser(description="Coding style checker")
+    parser.add_argument("-f", action="store_true", help="Force pull latest image")
     args = parser.parse_args()
 
     delivery_dir = os.getcwd()
     reports_dir = os.getcwd()
     force_pull = args.f
     has_socket_access = os.access(DOCKER_SOCKET_PATH, os.R_OK)
-    base_exec_cmd = ['docker']
+    base_exec_cmd = ["docker"]
 
     if os.path.exists(EXPORT_FILE):
         os.remove(EXPORT_FILE)
 
     if not has_socket_access:
-        print(f"{warning_gradient('WARNING: Socket access is denied')}")
+        print(f"{warning_text('WARNING: Socket access is denied')}")
         print(
-            f"To fix this we will add the current user to docker group with : sudo usermod -a -G docker {os.getenv('USER')}")
+            f"To fix this we will add the current user to docker group with : sudo usermod -a -G docker {os.getenv('USER')}"
+        )
         response = input("Do you want to proceed? (yes/no) ").lower()
 
-        if response in ['yes', 'y']:
-            subprocess.run(['sudo', 'usermod', '-a', '-G',
-                           'docker', os.getenv('USER')])
+        if response in ["yes", "y"]:
+            subprocess.run(["sudo", "usermod", "-a", "-G", "docker", os.getenv("USER")])
             print(
-                f"{warning_gradient('You must reboot your computer for the changes to take effect')}")
-        base_exec_cmd = ['sudo', 'docker']
+                f"{warning_text('You must reboot your computer for the changes to take effect')}"
+            )
+        base_exec_cmd = ["sudo", "docker"]
 
     if should_pull_image(force_pull):
-        print(f"🔑 {warning_gradient('Fetching token...')}")
+        print(f"🔑 {warning_text('Fetching token...')}")
         try:
             import requests
-            token_resp = requests.get(
-                "https://ghcr.io/token?service=ghcr.io&scope=repository:epitech/coding-style-checker:pull")
-            token = token_resp.json()['token']
 
-            headers = {'Authorization': f'Bearer {token}'}
+            token_resp = requests.get(
+                "https://ghcr.io/token?service=ghcr.io&scope=repository:epitech/coding-style-checker:pull"
+            )
+            token = token_resp.json()["token"]
+
+            headers = {"Authorization": f"Bearer {token}"}
             status = requests.head(
-                "https://ghcr.io/v2/epitech/coding-style-checker/manifests/latest", headers=headers)
+                "https://ghcr.io/v2/epitech/coding-style-checker/manifests/latest",
+                headers=headers,
+            )
 
             if status.ok:
-                print(f"🚚 {info_gradient('Pulling latest image...')}")
-                subprocess.run(base_exec_cmd + ['pull', 'ghcr.io/epitech/coding-style-checker:latest'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(base_exec_cmd + ['image', 'prune', '-f'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"🚚 {info_text('Pulling latest image...')}")
+                subprocess.run(
+                    base_exec_cmd
+                    + ["pull", "ghcr.io/epitech/coding-style-checker:latest"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                subprocess.run(
+                    base_exec_cmd + ["image", "prune", "-f"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
 
-                with open(IMAGE_LAST_PULL_FILE, 'w') as f:
+                with open(IMAGE_LAST_PULL_FILE, "w") as f:
                     f.write(str(int(time.time())))
         except Exception as e:
-            print(f"❌ {error_gradient('Failed to pull latest image')}")
-            print(f"🔍 {error_gradient('Error details:')} {str(e)}")
+            print(f"❌ {error_text('Failed to pull latest image')}")
+            print(f"🔍 {error_text('Error details:')} {str(e)}")
             if isinstance(e, requests.exceptions.ConnectionError):
-                print(f"💡 {warning_gradient('This might be due to network connectivity issues')}")
+                print(
+                    f"💡 {warning_text('This might be due to network connectivity issues')}"
+                )
             elif isinstance(e, requests.exceptions.RequestException):
-                print(f"💡 {warning_gradient('This might be due to API access issues or rate limiting')}")
+                print(
+                    f"💡 {warning_text('This might be due to API access issues or rate limiting')}"
+                )
 
-    print(f"🕒 {purple_gradient('Using cached image...')}")
-    print(f"🔍 {info_gradient('Checking coding style...')}")
+    print(f"🕒 {purple_text('Using cached image...')}")
+    print(f"🔍 {info_text('Checking coding style...')}")
 
-    subprocess.run(base_exec_cmd + [
-        'run', '--platform', 'linux/amd64', '--rm', '-i',
-        '-v', f"{delivery_dir}:/mnt/delivery",
-        '-v', f"{reports_dir}:/mnt/reports",
-        'ghcr.io/epitech/coding-style-checker:latest',
-        '/mnt/delivery', '/mnt/reports'
-    ])
+    subprocess.run(
+        base_exec_cmd
+        + [
+            "run",
+            "--platform",
+            "linux/amd64",
+            "--rm",
+            "-i",
+            "-v",
+            f"{delivery_dir}:/mnt/delivery",
+            "-v",
+            f"{reports_dir}:/mnt/reports",
+            "ghcr.io/epitech/coding-style-checker:latest",
+            "/mnt/delivery",
+            "/mnt/reports",
+        ],
+        stderr=subprocess.DEVNULL,
+    )
 
     display_results()
 
@@ -231,7 +485,7 @@ def main():
 
     # Display execution time
     elapsed_time = time.time() - start_time
-    print(f"\n⏱️ {info_gradient(f'Total execution time: {elapsed_time:.2f} seconds')}")
+    print(f"\n⏱️ {info_text(f'Total execution time: {elapsed_time:.2f} seconds')}")
 
 
 if __name__ == "__main__":

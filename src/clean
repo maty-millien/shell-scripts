@@ -5,38 +5,31 @@ import os
 import sys
 from pathlib import Path
 
-
-def rgb_to_ansi(r, g, b, bold=True):
-    bold_code = "1;" if bold else ""
-    return f"\033[{bold_code}38;2;{r};{g};{b}m"
-
-
-def gradient_text(text, start_rgb, end_rgb, bold=True):
-    result = ""
-    start_r, start_g, start_b = start_rgb
-    end_r, end_g, end_b = end_rgb
-
-    for i, char in enumerate(text):
-        progress = i / (len(text) - 1) if len(text) > 1 else 0
-        r = int(start_r + (end_r - start_r) * progress)
-        g = int(start_g + (end_g - start_g) * progress)
-        b = int(start_b + (end_b - start_b) * progress)
-
-        result += f"{rgb_to_ansi(r, g, b, bold)}{char}"
-
-    return result + "\033[0m"
+# Plain ANSI color codes
+GREEN = "\033[1;32m"
+YELLOW = "\033[1;33m"
+BLUE = "\033[1;34m"
+MAGENTA = "\033[1;35m"
+CYAN = "\033[1;36m"
+RED = "\033[1;31m"
+RESET = "\033[0m"
 
 
-def success_gradient(text):
-    return gradient_text(text, (255, 255, 40), (40, 255, 40))
+def colored_text(text, color):
+    """Apply a plain color to text"""
+    return f"{color}{text}{RESET}"
 
 
-def info_gradient(text):
-    return gradient_text(text, (40, 255, 255), (40, 40, 255))
+def success_text(text):
+    return colored_text(text, GREEN)
 
 
-def failure_gradient(text):
-    return gradient_text(text, (255, 40, 40), (255, 40, 255))
+def info_text(text):
+    return colored_text(text, CYAN)
+
+
+def failure_text(text):
+    return colored_text(text, RED)
 
 
 CLEANUP_PATTERNS = [
@@ -62,40 +55,42 @@ def clean_directory(directory, force=False):
             if file_path.is_file():
                 try:
                     file_path.unlink()
-                    print(f"🗑️  {info_gradient('Removed:')} {file_path}")
+                    print(f"🗑️  {info_text('Removed:')} {file_path}")
                     cleaned_files += 1
                 except PermissionError:
                     if force:
                         file_path.chmod(0o777)
                         file_path.unlink()
-                        print(
-                            f"🗑️  {info_gradient('Force removed:')} {file_path}")
+                        print(f"🗑️  {info_text('Force removed:')} {file_path}")
                         cleaned_files += 1
                     else:
-                        print(
-                            f"❌ {failure_gradient('Permission denied:')} {file_path}")
+                        print(f"❌ {failure_text('Permission denied:')} {file_path}")
 
     return cleaned_files
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Clean C programming temporary files')
-    parser.add_argument('-f', '--force', action='store_true',
-                        help='Force remove files (change permissions if needed)')
-    parser.add_argument('-p', '--path', default='.',
-                        help='Path to clean (default: current directory)')
+    parser = argparse.ArgumentParser(description="Clean C programming temporary files")
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Force remove files (change permissions if needed)",
+    )
+    parser.add_argument(
+        "-p", "--path", default=".", help="Path to clean (default: current directory)"
+    )
     args = parser.parse_args()
 
-    print(f"🧹 {info_gradient('Cleaning temporary files...')}")
+    print(f"🧹 {info_text('Cleaning temporary files...')}")
 
     cleaned = clean_directory(args.path, args.force)
 
     if cleaned > 0:
-        s = 's' if cleaned > 1 else ''
-        print(f"\n✨ {success_gradient(f'Cleaned {cleaned} file{s}!')}")
+        s = "s" if cleaned > 1 else ""
+        print(f"\n✨ {success_text(f'Cleaned {cleaned} file{s}!')}")
     else:
-        print(f"\n✨ {success_gradient('Directory already clean!')}")
+        print(f"\n✨ {success_text('Directory already clean!')}")
 
 
 if __name__ == "__main__":
