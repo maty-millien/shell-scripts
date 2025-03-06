@@ -1,0 +1,353 @@
+#!/usr/bin/env python3
+
+import os
+import subprocess
+import sys
+import argparse
+
+# Plain ANSI color codes
+RED = "\033[1;31m"
+GREEN = "\033[1;32m"
+YELLOW = "\033[1;33m"
+BLUE = "\033[1;34m"
+MAGENTA = "\033[1;35m"
+CYAN = "\033[1;36m"
+WHITE = "\033[1;37m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+
+def strip_ansi(text):
+    import re
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+
+def get_input(prompt):
+    """Get user input with a custom prompt"""
+    try:
+        return input(f"{BOLD}{prompt}{RESET} ")
+    except (EOFError, KeyboardInterrupt):
+        print("\nOperation cancelled by user")
+        sys.exit(1)
+
+
+def run_git_command(cmd, description, show_output=True):
+    """Run a git command and print its output with nice formatting"""
+    print(f"{BOLD}→ {description}{RESET}")
+
+    try:
+        result = subprocess.run(cmd,
+                               capture_output=True,
+                               text=True,
+                               check=True)
+
+        if show_output and result.stdout.strip():
+            relevant_lines = [line for line in result.stdout.strip().split('\n') if line.strip()]
+            if relevant_lines:
+                print(f"{BLUE}▼ Output{RESET}")
+                for line in relevant_lines:
+                    print(f"  {line}")
+                print()
+
+        return True, result.stdout
+
+    except subprocess.CalledProcessError as e:
+        print(f"{RED}✗ ERROR: Command failed{RESET}")
+        if e.stderr:
+            error_details = e.stderr.strip()
+            if error_details:
+                print(f"{RED}▼ Details{RESET}")
+                for line in error_details.split('\n'):
+                    print(f"  {line}")
+        return False, e.stderr
+
+    except Exception as e:
+        print(f"{RED}✗ ERROR: Command failed with exception{RESET}")
+        print(f"{RED}▼ Details{RESET}")
+        print(f"  {str(e)}")
+        return False, str(e)
+
+
+def get_branch_status(remote, branch):
+    """Get detailed branch status information"""
+    try:
+        # Get local commit
+        local_commit = subprocess.run(
+            ['git', 'rev-parse', branch],
+            capture_output=True, text=True, check=True
+        ).stdout.strip()[:7]  # First 7 chars of commit hash
+
+        # Get remote commit
+        remote_commit = subprocess.run(
+            ['git', 'rev-parse', f'{remote}/{branch}'],
+            capture_output=True, text=True, check=True
+        ).stdout.strip()[:7]
+
+        # Get ahead/behind count
+        ahead_behind = subprocess.run(
+            ['git', 'rev-list', '--left-right', '--count', f'{branch}...{remote}/{branch}'],
+            capture_output=True, text=True, check=True
+        ).stdout.strip().split()
+
+        ahead = int(ahead_behind[0])
+        behind = int(ahead_behind[1])
+
+        status = ""
+        status_color = GREEN
+
+        if ahead > 0 and behind > 0:
+            status = f"diverged (ahead {ahead}, behind {behind})"
+            status_color = YELLOW
+        elif ahead > 0:
+            status = f"ahead by {ahead} commit{'s' if ahead > 1 else ''}"
+            status_color = CYAN
+        elif behind > 0:
+            status = f"behind by {behind} commit{'s' if behind > 1 else ''}"
+            status_color = YELLOW
+        else:
+            status = "up to date"
+            status_color = GREEN
+
+        return {
+            'local_commit': local_commit,
+            'remote_commit': remote_commit,
+            'ahead': ahead,
+            'behind': behind,
+            'status': status,
+            'status_color': status_color
+        }
+    except Exception:
+        return None
+
+
+def get_unpushed_changes(remote, branch):
+    """Get a summary of unpushed changes"""
+    try:
+        # Get the diff between local and remote
+        diff_cmd = ['git', 'diff', '--stat', f'{remote}/{branch}..{branch}']
+        result = subprocess.run(diff_cmd, capture_output=True, text=True, check=False)
+
+        if result.returncode != 0:
+            # Try without the remote reference (might be first push)
+            diff_cmd = ['git', 'diff', '--stat', f'HEAD']
+            result = subprocess.run(diff_cmd, capture_output=True, text=True, check=False)
+
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def get_unpushed_commits(remote, branch):
+    """Get a list of unpushed commits"""
+    try:
+        log_cmd = ['git', 'log', '--oneline', f'{remote}/{branch}..{branch}']
+        result = subprocess.run(log_cmd, capture_output=True, text=True, check=False)
+
+        if result.returncode != 0:
+            # Might be first push to branch
+            log_cmd = ['git', 'log', '--oneline']
+            result = subprocess.run(log_cmd, capture_output=True, text=True, check=False)
+
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def show_push_summary(changes, commits):
+    """Show a summary of what's being pushed"""
+    if changes:
+        print(f"{CYAN}▼ Changes to be pushed{RESET}")
+        for line in changes.split('\n'):
+            if line.strip():
+                print(f"  {line}")
+        print()
+
+    if commits:
+        print(f"{CYAN}▼ Commits to be pushed{RESET}")
+        for line in commits.split('\n'):
+            if line.strip():
+                print(f"  {line}")
+        print()
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Git push helper')
+    parser.add_argument('-r', '--remote', default='origin',
+                       help='Git remote name (default: origin)')
+    parser.add_argument('-b', '--branch',
+                       help='Git branch name (default: current branch)')
+    parser.add_argument('-f', '--force', action='store_true',
+                       help='Force push (--force)')
+    parser.add_argument('--force-with-lease', action='store_true',
+                       help='Force push with lease (--force-with-lease)')
+    parser.add_argument('-d', '--dry-run', action='store_true',
+                       help='Dry run (--dry-run)')
+    parser.add_argument('-q', '--quiet', action='store_true',
+                       help='Quiet mode (less output)')
+    parser.add_argument('-s', '--status', action='store_true',
+                       help='Show detailed branch status')
+    parser.add_argument('-u', '--set-upstream', action='store_true',
+                       help='Set upstream (-u)')
+    parser.add_argument('-m', '--message',
+                       help='Commit message (optional, will prompt if not provided)')
+    parser.add_argument('--no-add-commit', action='store_true',
+                       help='Skip add and commit, only push existing commits')
+    args = parser.parse_args()
+
+    # Check if current directory is a git repository
+    if not os.path.exists('.git'):
+        print(f"{RED}ERROR:{RESET} Not a git repository")
+        sys.exit(1)
+
+    # Get current branch if none specified
+    if not args.branch:
+        try:
+            current_branch = subprocess.run(
+                ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                capture_output=True, text=True, check=True
+            ).stdout.strip()
+            args.branch = current_branch
+        except subprocess.CalledProcessError:
+            print(f"{RED}ERROR:{RESET} Unable to determine current branch")
+            sys.exit(1)
+
+    # Print a header with repo status
+    try:
+        repo_name = os.path.basename(os.path.abspath('.'))
+        print(f"{CYAN}Branch: {GREEN}{args.branch}{CYAN} | Remote: {GREEN}{args.remote}{RESET}")
+
+        # Show current branch status if requested
+        if args.status:
+            status = get_branch_status(args.remote, args.branch)
+            if status:
+                print(f"{CYAN}Status: {status['status_color']}{status['status']}{RESET}")
+                print(f"{CYAN}Local: {WHITE}{status['local_commit']}{CYAN} | Remote: {WHITE}{status['remote_commit']}{RESET}")
+        print()
+    except Exception:
+        # Continue even if status information fails
+        pass
+
+    # Get unpushed changes and commits for preview
+    if not args.quiet:
+        try:
+            changes = get_unpushed_changes(args.remote, args.branch)
+            commits = get_unpushed_commits(args.remote, args.branch)
+
+            if changes or commits:
+                show_push_summary(changes, commits)
+        except Exception:
+            # Continue even if preview fails
+            pass
+
+    # Add and commit by default unless --no-add-commit is specified
+    if not args.no_add_commit:
+        # Check for uncommitted changes
+        status_cmd = ['git', 'status', '--porcelain']
+        result = subprocess.run(status_cmd, capture_output=True, text=True, check=True)
+        has_changes = bool(result.stdout.strip())
+
+        if has_changes:
+            # Stage all changes
+            add_success, add_output = run_git_command(
+                ['git', 'add', '.'],
+                "Staging all changes",
+                show_output=not args.quiet
+            )
+
+            if not add_success:
+                print(f"{RED}✗ Failed to stage changes{RESET}")
+                sys.exit(1)
+
+            # Get commit message if not provided
+            if not args.message:
+                args.message = get_input("Enter commit message:")
+
+                # Validate commit message
+                if not args.message.strip():
+                    print(f"{RED}ERROR:{RESET} Commit message cannot be empty")
+                    sys.exit(1)
+
+            # Commit changes
+            commit_cmd = ['git', 'commit', '-m', args.message]
+            commit_success, commit_output = run_git_command(
+                commit_cmd,
+                f"Creating commit with message: {args.message}",
+                show_output=not args.quiet
+            )
+
+            if not commit_success:
+                print(f"{RED}✗ Failed to commit changes{RESET}")
+                sys.exit(1)
+
+            print(f"{GREEN}✓ Changes committed successfully{RESET}")
+
+            # Get updated list of unpushed changes and commits
+            if not args.quiet:
+                try:
+                    changes = get_unpushed_changes(args.remote, args.branch)
+                    commits = get_unpushed_commits(args.remote, args.branch)
+
+                    if changes or commits:
+                        print(f"{CYAN}▼ Updated changes to be pushed{RESET}")
+                        show_push_summary(changes, commits)
+                except Exception:
+                    # Continue even if preview fails
+                    pass
+        elif not args.quiet:
+            print(f"{YELLOW}No local changes to commit{RESET}")
+
+    # Construct push command
+    push_cmd = ['git', 'push']
+
+    if args.force:
+        push_cmd.append('--force')
+    elif args.force_with_lease:
+        push_cmd.append('--force-with-lease')
+
+    if args.dry_run:
+        push_cmd.append('--dry-run')
+
+    if args.set_upstream:
+        push_cmd.append('-u')
+
+    if args.quiet:
+        push_cmd.append('--quiet')
+
+    push_cmd.extend([args.remote, args.branch])
+
+    # Push changes
+    description = "Dry run: " if args.dry_run else ""
+    description += f"Pushing to {args.remote}/{args.branch}"
+    if args.force:
+        description += " (force push)"
+    elif args.force_with_lease:
+        description += " (force-with-lease)"
+
+    push_success, push_output = run_git_command(
+        push_cmd,
+        description,
+        show_output=not args.quiet
+    )
+
+    if push_success:
+        if args.dry_run:
+            print(f"{YELLOW}✓ Dry run completed{RESET}")
+        else:
+            print(f"{GREEN}✓ Push successful{RESET}")
+
+        # Show final branch status if not quiet mode
+        if not args.quiet and not args.dry_run:
+            try:
+                status = get_branch_status(args.remote, args.branch)
+                if status:
+                    print(f"{CYAN}Current status: {status['status_color']}{status['status']}{RESET}")
+            except Exception:
+                pass
+    else:
+        print(f"{RED}✗ Push failed{RESET}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
