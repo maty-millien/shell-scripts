@@ -5,10 +5,14 @@ import shutil
 import sys
 import re
 import subprocess
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 BOILERPLATE_PATH = "/Users/maty/Projects/boilerplate/"
 REPLACE_PATTERN = "boilerplate"
 EXCLUDE = {".git", "node_modules", ".next", ".DS_Store"}
+
+console = Console()
 
 
 class NewApp:
@@ -83,20 +87,25 @@ class NewApp:
 
     def pnpm_install(self):
         try:
-            subprocess.run(["pnpm", "i"], cwd=self.dst, check=True)
-        except Exception:
-            pass
+            subprocess.run(
+                ["pnpm", "i"],
+                cwd=self.dst,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as e:
+            if e.stderr:
+                console.print(f"[red]pnpm install failed:[/]")
+                console.print(e.stderr.decode(errors="ignore"))
 
     def get_app_name(self):
         while True:
-            self.app_name = input(
-                "Enter the name of your app (lowercase only): "
+            self.app_name = console.input(
+                "[bold cyan]Enter the name of your app: [/] "
             ).strip()
             if not self.app_name:
-                print("App name cannot be empty.")
-                continue
-            if not self.app_name.islower():
-                print("App name must be only lowercase.")
+                console.print("[red]App name cannot be empty.[/]")
                 continue
             break
         self.dst = os.path.join(os.getcwd(), self.app_name)
@@ -104,15 +113,48 @@ class NewApp:
     def setup(self):
         self.get_app_name()
         if not os.path.exists(self.src):
-            print(f"Source boilerplate not found: {self.src}")
+            console.print(f"[red]Source boilerplate not found: {self.src}[/]")
             sys.exit(1)
         if os.path.exists(self.dst):
-            print(f"Target directory already exists: {self.dst}")
+            console.print(f"[red]Target directory already exists: {self.dst}[/]")
             sys.exit(1)
-        self.copy_boilerplate()
-        self.replace_in_files()
-        self.git_init_commit()
-        self.pnpm_install()
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(description="Adding boilerplate...", total=None)
+            self.copy_boilerplate()
+        console.print("[green]✔ Added boilerplate")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(description="Modifying files...", total=None)
+            self.replace_in_files()
+        console.print("[green]✔ Modified files")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(description="Initializing git...", total=None)
+            self.git_init_commit()
+        console.print("[green]✔ Initialized git")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(description="Installing packages...", total=None)
+            self.pnpm_install()
+        console.print("[green]✔ Packages installed")
+        console.print(f"[bold green]Your base project is ready ![/]")
 
 
 def main():
