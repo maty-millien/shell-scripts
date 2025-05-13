@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+import os
+import shutil
+import sys
+import re
+import subprocess
+
+
+def copy_boilerplate(src, dst, exclude=None):
+    if exclude is None:
+        exclude = {".git", "node_modules", ".next", ".DS_Store"}
+    for root, dirs, files in os.walk(src):
+        rel_path = os.path.relpath(root, src)
+        if rel_path == ".":
+            rel_path = ""
+        target_root = os.path.join(dst, rel_path)
+        dirs[:] = [d for d in dirs if d not in exclude]
+        if not os.path.exists(target_root):
+            os.makedirs(target_root)
+        for file in files:
+            if file in exclude:
+                continue
+            src_file = os.path.join(root, file)
+            dst_file = os.path.join(target_root, file)
+            shutil.copy2(src_file, dst_file)
+
+
+def replace_in_files(root_dir, app_name):
+    pattern = re.compile(r"boilerplate", re.IGNORECASE)
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+
+                def repl(match):
+                    text = match.group(0)
+                    if text.isupper():
+                        return app_name.upper()
+                    if text[0].isupper():
+                        return app_name.capitalize()
+                    return app_name
+
+                new_content = pattern.sub(repl, content)
+                if new_content != content:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(new_content)
+            except Exception:
+                pass
+
+
+def git_init_commit(dst, app_name):
+    try:
+        subprocess.run(
+            ["git", "init"],
+            cwd=dst,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=dst,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        commit_msg = f"Initial commit for {app_name} project"
+        subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=dst,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+def pnpm_install(dst):
+    try:
+        subprocess.run(["pnpm", "i"], cwd=dst, check=True)
+    except Exception:
+        pass
+
+
+def main():
+    src = "/Users/maty/Projects/boilerplate/"
+    while True:
+        app_name = input("Enter the name of your app (lowercase only): ").strip()
+        if not app_name:
+            print("App name cannot be empty.")
+            continue
+        if not app_name.islower():
+            print("App name must be only lowercase.")
+            continue
+        break
+    dst = os.path.join(os.getcwd(), app_name)
+    if not os.path.exists(src):
+        print(f"Source boilerplate not found: {src}")
+        sys.exit(1)
+    if os.path.exists(dst):
+        print(f"Target directory already exists: {dst}")
+        sys.exit(1)
+    copy_boilerplate(src, dst)
+    replace_in_files(dst, app_name)
+    git_init_commit(dst, app_name)
+    pnpm_install(dst)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+
+import os
+import subprocess
+import sys
+
+# --- Configuration ---
+OUTPUT_FILENAME = "codebase.md"
+INCLUDE_PATTERNS = (
+    "Makefile",
+    ".c",
+    ".h",
+    ".md",
+    ".py",
+    ".sh",
+    ".txt",
+    ".csv",
+)
+APPLY_EXCLUSIONS = True  # Set to False to ignore EXCLUDE_DIRS for content reading
+
+# Directories to exclude from *content reading* IF APPLY_EXCLUSIONS is True
+# Note: 'lib' is listed here but will NOT be excluded from the tree view below.
+EXCLUDE_DIRS = {
+    ".git",
+    ".vscode",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+    "lib",
+    "tests",
+}
+# ---------------------
+
+
+def get_tree_structure(
+    exclude_dirs_config, apply_exclusions_flag, output_filename_to_exclude
+):
+    """
+    Attempts to get the directory tree structure using the 'tree' command.
+    Always excludes the output file itself from the tree view.
+    Conditionally excludes directories *except for 'lib'* based on the flag.
+    """
+    try:
+        tree_exclude_args = []  # Arguments specifically for tree exclusions
+
+        # --- Always add exclusion for the output file itself ---
+        if output_filename_to_exclude:
+            print(
+                f"Tree command will exclude file: {output_filename_to_exclude}",
+                file=sys.stderr,
+            )
+            tree_exclude_args.extend(["-I", output_filename_to_exclude])
+
+        # --- Conditionally add exclusions for directories (but never 'lib') ---
+        dirs_excluded_in_tree = []
+        if apply_exclusions_flag:
+            for dir_to_exclude in exclude_dirs_config:
+                # *** Explicitly skip 'lib' for tree exclusion ***
+                if dir_to_exclude == "lib":
+                    continue
+                clean_dir = dir_to_exclude.strip("./\\")
+                if clean_dir:
+                    tree_exclude_args.extend(["-I", clean_dir])
+                    dirs_excluded_in_tree.append(dir_to_exclude)
+
+            if dirs_excluded_in_tree:
+                print(
+                    f"Tree command will also exclude directories: {', '.join(dirs_excluded_in_tree)} ('lib' will be shown).",
+                    file=sys.stderr,
+                )
+            else:
+                # This might happen if 'lib' was the only item in EXCLUDE_DIRS besides potentially the output file
+                print(
+                    f"Directory exclusions enabled, but no dirs other than 'lib' specified for tree exclusion ('lib' will be shown).",
+                    file=sys.stderr,
+                )
+
+        elif exclude_dirs_config:  # If exclusions are off but were configured
+            print(
+                "Tree command running without directory exclusions (only excluding output file).",
+                file=sys.stderr,
+            )
+
+        command = ["tree", "."] + tree_exclude_args
+        print(f"Running command: {' '.join(command)}", file=sys.stderr)
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        # (Error handling for tree command remains the same as before)
+        if result.returncode == 0:
+            return result.stdout
+        else:
+            if (
+                "directory tree empty" in result.stderr.lower()
+                or "no files found" in result.stdout.lower()
+                or result.returncode == 0
+            ):
+                print(
+                    f"Tree command returned empty or no files found (possibly due to exclusions). Code: {result.returncode}",
+                    file=sys.stderr,
+                )
+                return result.stdout
+            else:
+                print(
+                    f"Warning: 'tree' command failed (return code {result.returncode}).",
+                    file=sys.stderr,
+                )
+                if result.stderr:
+                    print(f"Tree stderr: {result.stderr}", file=sys.stderr)
+                if result.stdout:
+                    print(f"Tree stdout: {result.stdout}", file=sys.stderr)
+                return f"Error: Could not generate directory tree. Is 'tree' installed and in PATH? (Code: {result.returncode})\n"
+
+    except FileNotFoundError:
+        print(
+            "Warning: 'tree' command not found. Skipping directory tree generation.",
+            file=sys.stderr,
+        )
+        return "Error: 'tree' command not found. Skipping directory tree generation.\n"
+    except Exception as e:
+        print(
+            f"An unexpected error occurred while running 'tree': {e}", file=sys.stderr
+        )
+        return f"Error: An unexpected error occurred while running 'tree': {e}\n"
+
+
+def find_and_read_files(
+    start_dir=".",
+    include_patterns=INCLUDE_PATTERNS,
+    exclude_dirs=EXCLUDE_DIRS,
+    output_filename=OUTPUT_FILENAME,
+    apply_exclusions=True,
+):
+    """
+    Finds files matching patterns, reads their content, and yields (path, content).
+    Excludes the output file itself from being read.
+    Conditionally excludes reading content from directories listed in exclude_dirs
+    based on the apply_exclusions flag.
+    """
+    abs_output_filepath = os.path.abspath(os.path.join(start_dir, output_filename))
+
+    for root, dirs, files in os.walk(start_dir, topdown=True):
+        # --- Conditionally exclude directories *for content reading* ---
+        if apply_exclusions:
+            # This uses the full EXCLUDE_DIRS set (including 'lib')
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+        for filename in files:
+            full_path = os.path.abspath(os.path.join(root, filename))
+
+            # Skip the output file itself (always)
+            if full_path == abs_output_filepath:
+                continue
+
+            # Check if the file should be included based on patterns
+            should_include = False
+            if filename.lower() == "makefile":
+                should_include = True
+            else:
+                for pattern in include_patterns:
+                    if pattern.startswith(".") and filename.endswith(pattern):
+                        should_include = True
+                        break
+                    elif not pattern.startswith(".") and filename == pattern:
+                        should_include = True
+                        break
+
+            if should_include:
+                relative_path = os.path.relpath(full_path, start_dir)
+                if not relative_path.startswith("."):
+                    relative_path = "./" + relative_path
+
+                try:
+                    with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    yield (relative_path, content)
+                except Exception as e:
+                    print(
+                        f"Warning: Could not read file '{full_path}': {e}",
+                        file=sys.stderr,
+                    )
+                    yield (relative_path, f"Error reading file: {e}")
+
+
+def get_language_hint(filepath):
+    """Provides a language hint for Markdown code blocks based on file extension."""
+    filepath = filepath.replace("\\", "/")
+    filename = os.path.basename(filepath)
+
+    if filename.endswith(".c") or filename.endswith(".h"):
+        return "c"
+    if filename.lower() == "makefile":
+        return "makefile"
+    if filename.endswith(".md"):
+        return "markdown"
+    return ""
+
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    print(f"Starting codebase consolidation into {OUTPUT_FILENAME}...")
+    print(f"Including files matching: {', '.join(INCLUDE_PATTERNS)}")
+
+    if APPLY_EXCLUSIONS:
+        # Clarify which exclusions apply where
+        content_exclude_dirs = EXCLUDE_DIRS
+        tree_exclude_dirs = {d for d in EXCLUDE_DIRS if d != "lib"}
+        print(
+            f"Applying directory exclusions for content reading: {', '.join(content_exclude_dirs)}"
+        )
+        if tree_exclude_dirs:
+            print(
+                f"Applying directory exclusions for tree view (excluding 'lib'): {', '.join(tree_exclude_dirs)}"
+            )
+        else:
+            print(
+                f"Directory exclusions enabled, but only 'lib' was configured (so it will be shown in tree)."
+            )
+
+    else:
+        print(
+            "Directory exclusions are currently DISABLED (for content reading and tree view)."
+        )
+    print(f"Excluding output file '{OUTPUT_FILENAME}' from content and tree view.")
+
+    try:
+        abs_output_path = os.path.abspath(OUTPUT_FILENAME)
+
+        with open(OUTPUT_FILENAME, "w", encoding="utf-8") as outfile:
+            # 1. Add Project Structure
+            outfile.write("# Project Structure\n\n")
+            outfile.write("```text\n")
+            # Pass the config for exclusions, the flag, and output filename
+            tree_structure = get_tree_structure(
+                EXCLUDE_DIRS, APPLY_EXCLUSIONS, OUTPUT_FILENAME
+            )
+            outfile.write(tree_structure.strip() + "\n")
+            outfile.write("```\n\n")
+
+            # 2. Add File Contents
+            outfile.write("# File Contents\n\n")
+            file_count = 0
+            # Pass the config for exclusions (incl 'lib'), flag, patterns, etc.
+            for rel_path, content in find_and_read_files(
+                start_dir=".",
+                include_patterns=INCLUDE_PATTERNS,
+                exclude_dirs=EXCLUDE_DIRS,  # Uses full set here
+                output_filename=OUTPUT_FILENAME,
+                apply_exclusions=APPLY_EXCLUSIONS,
+            ):  # Flag controls if EXCLUDE_DIRS is used
+                file_count += 1
+                print(f"Processing: {rel_path}")
+                lang_hint = get_language_hint(rel_path)
+                outfile.write(f"## File: `{rel_path}`\n\n")
+                outfile.write(f"```{lang_hint}\n")
+                outfile.write(content)
+                if not content.endswith("\n"):
+                    outfile.write("\n")
+                outfile.write("```\n\n")
+
+        print(f"\nSuccessfully processed {file_count} files.")
+        print(f"Codebase context written to: {os.path.abspath(OUTPUT_FILENAME)}")
+
+    except IOError as e:
+        print(f"Error writing to output file '{OUTPUT_FILENAME}': {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        sys.exit(1)
